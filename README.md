@@ -12,7 +12,7 @@ The data lifting module for ClaimsKG that creates the RDF model instantiation fr
 ```
     python exporter.py --input data.zip
 ```
-- Seting a diferent output name
+- Using a diferent output name
 ```
     python Exporter.py --input data.zip --output out.rdf
 ```
