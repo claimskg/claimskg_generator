@@ -7,7 +7,7 @@ The data lifting module for ClaimsKG that creates the RDF model instantiation fr
 Export claims to a csv file named "output_got.csv".
 - Get help use  [under implementation]
 ```
-    python Exporter.py -h
+    python exporter.py -h
 ```
 - Exporting a RDF
 ```
