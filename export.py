@@ -1,128 +1,165 @@
-from rdflib import URIRef, BNode, Literal
-from rdflib.namespace import RDF,DC, FOAF
-from rdflib.namespace import Namespace, NamespaceManager
-from rdflib import Graph
-import pandas as pd
 import cgi
-import rdflib
+import getopt
 import json
-import urllib
-import sys,getopt
+import sys
+import urllib.parse
+
+import pandas
+import rdflib
+from rdflib import Graph
+from rdflib import URIRef, Literal
+from rdflib.namespace import NamespaceManager
+from rdflib.namespace import RDF
 
 namespace_manager = NamespaceManager(Graph())
 
-rdf_pref=rdflib.Namespace("http://www.w3.org/2000/01/rdf-schema#")
+rdf_pref = rdflib.Namespace("http://www.w3.org/2000/01/rdf-schema#")
 namespace_manager.bind('rdfs', rdf_pref, override=False)
 
-schema_pref=rdflib.Namespace("http://schema.org/")
+schema_pref = rdflib.Namespace("http://schema.org/")
 namespace_manager.bind('schema', schema_pref, override=False)
 
-nif_pref=rdflib.Namespace("http://persistence.uni-leipzig.org/nlp2rdf/ontologies/nif-core#")
+claim_review_class_uri = URIRef(schema_pref['ClaimReview'])
+schema_organization_class_uri = URIRef(schema_pref['Organization'])
+schema_thing_class_uri = URIRef(schema_pref['Thing'])
+
+claim_reviewed_property_uri = rdflib.term.URIRef(schema_pref['claimReviewed'])
+schema_url_property_uri = rdflib.term.URIRef(schema_pref['url'])
+schema_name_property_uri = rdflib.term.URIRef(schema_pref['name'])
+schema_date_published_property_uri = rdflib.term.URIRef(schema_pref['datePublished'])
+schema_language_preperty_uri = rdflib.term.URIRef(schema_pref['language'])
+schema_author_property_uri = rdflib.term.URIRef(schema_pref['author'])
+schema_same_as_property_uri = rdflib.term.URIRef(schema_pref['sameAs'])
+
+
+english_literal = Literal("english")
+
+nif_pref = rdflib.Namespace("http://persistence.uni-leipzig.org/nlp2rdf/ontologies/nif-core#")
 namespace_manager.bind('nif', nif_pref, override=False)
 
-its_pref=rdflib.Namespace("https://www.w3.org/2005/11/its/rdf#")
+its_pref = rdflib.Namespace("https://www.w3.org/2005/11/its/rdf#")
 namespace_manager.bind('itsrdf', its_pref, override=False)
 
+# dbpedia_pref = rdflib.Namespace("")
+# namespace_manager.bind("dbpedia",dbpedia_pref,override=False)
 
-def export_rdf(pdf,options):
-    print 
-    index_=0
-    index_ent=0
-    g = rdflib.Graph()
-    g.namespace_manager = namespace_manager
-    for index, row in pdf.iterrows():
-        index_+=1
-        print str(index_) + "/" + str(len(pdf))
+claimskg_pref = rdflib.Namespace("http://claimskg.gesis.org/website_placeholder/")
+namespace_manager.bind('claimskg', claimskg_pref, override=False)
+namespace_manager.bind('base', claimskg_pref, override=True)
+
+
+def export_rdf(pandas_dataframe, options):
+    print()
+    uri_name_unique_counter = 0
+    entity_counter = 0
+    output_graph = rdflib.Graph()
+    output_graph.namespace_manager = namespace_manager
+    for column, row in pandas_dataframe.iterrows():
+        uri_name_unique_counter += 1
+        sys.stdout.write("{current}/{total} [{percent}%]                                                            \r"
+                         .format(current=uri_name_unique_counter, total=len(pandas_dataframe),
+                                 percent=round((uri_name_unique_counter / float(len(pandas_dataframe))) * 100, 2)))
 
         ###################
-        #schema_claimreview
+        # schema_claimreview
         ###################
+        claimreview_instance = URIRef(claimskg_pref['claimreview' + "/" + str(uri_name_unique_counter)])
+        output_graph.add((claimreview_instance, RDF.type, claim_review_class_uri))
+        output_graph.add(
+            (claimreview_instance, claim_reviewed_property_uri, Literal(row['extra_title'])))
+        output_graph.add(
+            (claimreview_instance, schema_url_property_uri, Literal(row['claimReview_url'])))
 
-
-        claimreview = URIRef(urllib.quote_plus("claimreview"+str(index_)))
-        g.add( (claimreview, rdflib.term.URIRef(schema_pref['claimReviewed']), Literal(row['extra_title']) ) )
-        g.add( (claimreview, rdflib.term.URIRef(schema_pref['url']), Literal(row['claimReview_url']) ) )
-        g.add( (claimreview, rdflib.term.URIRef(schema_pref['datePublished']), Literal(row['claimReview_datePublished']) ) )
-        g.add( (claimreview, rdflib.term.URIRef(schema_pref['language']), Literal( "english") ))
-        
-
-        ####################
-        #schema_organization
-        ####################
-        organization = URIRef(urllib.quote_plus("organization_"+row['claimReview_author_name']))
-        g.add( (organization, rdflib.term.URIRef(schema_pref['name']), Literal(row['claimReview_author_name']) ) )
-        g.add( (organization, rdflib.term.URIRef(schema_pref['url']), Literal(row['claimReview_author_url']) ) )
-
-        g.add( (claimreview, rdflib.term.URIRef(schema_pref['author']), organization ))
-        
+        output_graph.add(
+            (claimreview_instance, schema_date_published_property_uri,
+             Literal(row['claimReview_datePublished'])))
+        output_graph.add((claimreview_instance, schema_language_preperty_uri, english_literal))
 
         ####################
-        #schema_creativework
+        # schema_organization
         ####################
-        creativework_author = URIRef(urllib.quote_plus("creativework_author_"+str(row['creativeWork_author_name'])))
-        g.add( (creativework_author, rdflib.term.URIRef(schema_pref['name']), Literal(row['creativeWork_author_name']) ) )
-        g.add( (creativework_author, rdflib.term.URIRef(schema_pref['sameAs']), Literal("dbpedia:link") ) )
+        author_name = row['claimReview_author_name'].lower().replace(" ", "_")
+        organization = URIRef(claimskg_pref['organization' + "/" + author_name])
+        output_graph.add((organization, RDF.type, schema_organization_class_uri))
 
-        creativework = URIRef(urllib.quote_plus("creativework_"+row['claimReview_author_name']))
-        g.add( (creativework, rdflib.term.URIRef(schema_pref['datePublished']), Literal(row['creativeWork_datePublished']) ) )
-        g.add( (creativework, rdflib.term.URIRef(schema_pref['citation']), Literal(row['claimReview_author_url']) ) )
-        g.add( (creativework, rdflib.term.URIRef(schema_pref['author']), creativework_author ) )
+        output_graph.add(
+            (organization, schema_name_property_uri, Literal(row['claimReview_author_name'])))
+        output_graph.add((organization, schema_url_property_uri, Literal(row['claimReview_author_url'])))
 
-        g.add( (claimreview, rdflib.term.URIRef(schema_pref['itemReviewed']), creativework ))
+        output_graph.add((claimreview_instance, schema_author_property_uri, organization))
 
         ####################
-        #schema_reviewRating
+        # schema_creativework
         ####################
-        #print 
-        if (type(row['rating_alternateName'])==type(1.0)):
-            str_=""
+        creative_work_author_value = str(row['creativeWork_author_name']).lower().replace(" ", "_")
+        creative_work_author = URIRef(claimskg_pref["creativework_author" + "/" + creative_work_author_value])
+
+        output_graph.add((creative_work_author, RDF.type, schema_thing_class_uri))
+
+        output_graph.add(
+            (creative_work_author, schema_name_property_uri , Literal(row['creativeWork_author_name'])))
+
+        # Todo: Reconcile author entities with DBPedia
+        output_graph.add((creative_work_author, schema_same_as_property_uri, Literal("dbpedia:link")))
+
+
+
+        creativework = URIRef(urllib.parse.quote_plus("creativework_" + row['claimReview_author_name']))
+        output_graph.add((creativework, schema_date_published_property_uri,
+                          Literal(row['creativeWork_datePublished'])))
+        output_graph.add(
+            (creativework, rdflib.term.URIRef(schema_pref['citation']), Literal(row['claimReview_author_url'])))
+        output_graph.add((creativework, rdflib.term.URIRef(schema_pref['author']), creative_work_author))
+
+        output_graph.add((claimreview_instance, rdflib.term.URIRef(schema_pref['itemReviewed']), creativework))
+
+        ####################
+        # schema_reviewRating
+        ####################
+        # print
+        if type(row['rating_alternateName']) == type(1.0):
+            str_ = ""
         else:
-            str_=cgi.escape(row['rating_alternateName']).encode('ascii', 'xmlcharrefreplace')
+            str_ = cgi.escape(row['rating_alternateName']).encode('ascii', 'xmlcharrefreplace')
 
-        rating = rdflib.term.URIRef(urllib.quote_plus("rating_"+str(index_)))
-        #rating = rdflib.term.URIRef("https://schema.org/reviewRating") 
-        
-        
+        rating = rdflib.term.URIRef(claimskg_pref["rating"] + "/" + str(uri_name_unique_counter))
+        # rating = rdflib.term.URIRef("https://schema.org/reviewRating")
+
         # Having defined the things and the edge weights, now assemble the graph
-        g.add( (rating, RDF.type, rdflib.term.URIRef("https://schema.org/Rating") ) )
-        g.add( (rating,  rdflib.term.URIRef(schema_pref['alternateName_normalized']),  Literal(row['rating_alternateName_normalized']) ))
-        g.add( (rating,  rdflib.term.URIRef(schema_pref['alternateName_original']),  Literal(str_) ))
-        g.add( (rating,  rdflib.term.URIRef(schema_pref['bestRating']),  Literal(row['rating_bestRating']) ))
-        g.add( (rating,  rdflib.term.URIRef(schema_pref['ratingValue']),  Literal(row['rating_ratingValue']) ))
-        g.add( (rating,  rdflib.term.URIRef(schema_pref['worstRating']),  Literal(row['rating_worstRating']) ))
-        
-        g.add( (claimreview, rdflib.term.URIRef(schema_pref['reviewRating']), rating ) )
-        
+        output_graph.add((rating, RDF.type, rdflib.term.URIRef("https://schema.org/Rating")))
+        output_graph.add((rating, rdflib.term.URIRef(schema_pref['alternateName_normalized']),
+                          Literal(row['rating_alternateName_normalized'])))
+        output_graph.add((rating, rdflib.term.URIRef(schema_pref['alternateName_original']), Literal(str_)))
+        output_graph.add((rating, rdflib.term.URIRef(schema_pref['bestRating']), Literal(row['rating_bestRating'])))
+        output_graph.add((rating, rdflib.term.URIRef(schema_pref['ratingValue']), Literal(row['rating_ratingValue'])))
+        output_graph.add((rating, rdflib.term.URIRef(schema_pref['worstRating']), Literal(row['rating_worstRating'])))
+
+        output_graph.add((claimreview_instance, rdflib.term.URIRef(schema_pref['reviewRating']), rating))
 
         ##############
         ### mentions 
         #############
         if json.loads(row[u'extra_entities_claimReview_claimReviewed']):
-            for i in json.loads( row[u'extra_entities_claimReview_claimReviewed']):
-                index_ent+=1
-                nif= rdflib.term.URIRef(urllib.quote_plus("mention_"+str(index_ent)))
-                g.add( (nif, rdflib.term.URIRef(nif_pref['isString']), Literal(i['mention'])) )
-                g.add( (nif, rdflib.term.URIRef(nif_pref['beginIndex']), Literal(i['start'])) )
-                g.add( (nif, rdflib.term.URIRef(nif_pref['endInder']), Literal(i['end'])) )
-                g.add( (nif, rdflib.term.URIRef(its_pref['taConfidence']), Literal(i['linkProbability'])) )
-                g.add( (nif, rdflib.term.URIRef(its_pref['taIdentRef']), Literal(i['entity'])) )
+            for i in json.loads(row[u'extra_entities_claimReview_claimReviewed']):
+                entity_counter += 1
+                nif = rdflib.term.URIRef(urllib.parse.quote_plus("mention_" + str(entity_counter)))
+                output_graph.add((nif, rdflib.term.URIRef(nif_pref['isString']), Literal(i['mention'])))
+                output_graph.add((nif, rdflib.term.URIRef(nif_pref['beginIndex']), Literal(i['start'])))
+                output_graph.add((nif, rdflib.term.URIRef(nif_pref['endInder']), Literal(i['end'])))
+                output_graph.add((nif, rdflib.term.URIRef(its_pref['taConfidence']), Literal(i['linkProbability'])))
+                output_graph.add((nif, rdflib.term.URIRef(its_pref['taIdentRef']), Literal(i['entity'])))
 
-                g.add( (claimreview, rdflib.term.URIRef(schema_pref['mentions']), nif ) )
+                output_graph.add((claimreview_instance, rdflib.term.URIRef(schema_pref['mentions']), nif))
 
-
-
-
-
-    return g.serialize(format=options['format'])
-
+    return output_graph.serialize(format=options['format'], encoding='utf-8')
 
 
 if __name__ == '__main__':
     argv = sys.argv[1:]
-    options={}
+    options = {}
 
-    options['output']="output.rdf"
-    options['format']="turtle"
+    options['output'] = "output.ttl"
+    options['format'] = "turtle"
 
     if len(argv) == 0:
         print('You must pass some parameters. Use \"-h\" to help.')
@@ -130,7 +167,7 @@ if __name__ == '__main__':
 
     if len(argv) == 1 and argv[0] == '-h':
         f = open('exporter_help_text.txt', 'r')
-        print f.read()
+        print(f.read())
         f.close()
 
         exit()
@@ -138,14 +175,12 @@ if __name__ == '__main__':
     try:
         opts, args = getopt.getopt(argv, "", ("input=", "output=", "format="))
 
-        
-        
-        for opt,arg in opts:
+        for opt, arg in opts:
             if opt == '--input':
-                options['input']= arg
+                options['input'] = arg
 
             elif opt == '--output':
-                options['output']= arg
+                options['output'] = arg
 
             elif opt == '--format':
                 options['format'] = arg
@@ -154,9 +189,7 @@ if __name__ == '__main__':
         print('Arguments parser error, try -h')
         exit()
 
-
-    pdf = pd.read_csv(options['input'])
-    out=export_rdf(pdf,options)
+    pandas_frame = pandas.read_csv(options['input'])
+    output = export_rdf(pandas_frame, options)
     file = open(options['output'], "w")
-    file.write(out)
-    
+    file.write(output.decode("utf-8"))

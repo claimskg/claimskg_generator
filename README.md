@@ -1,22 +1,26 @@
 # claimskg_generator
 The data lifting module for ClaimsKG that creates the RDF model instantiation from the model 
 
+### Installation & Requirements
 
+Python 3.x
+
+To install the dependencies please use: `pip3 install -r requirements.txt`
 
 ### Command-line usage
 - Get help use  [under implementation]
-```
-    python exporter.py -h
+```shell
+    python3 export.py -h
 ```
 - Exporting a RDF
-```
-    python exporter.py --input data.zip
+```shell
+    python3 export.py --input data.zip
 ```
 - Using a diferent output name
-```
-    python Exporter.py --input data.zip --output out.rdf
+```shell
+    python3 export.py --input data.zip --output out.rdf
 ```
 - Using different a format
-```
-    python Exporter.py --input data.zip --format turtle
+```shell
+    python3 Exporter.py --input data.zip --format turtle
 ```
