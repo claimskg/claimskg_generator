@@ -19,7 +19,8 @@ namespace_manager.bind('rdfs', rdf_pref, override=False)
 schema_pref = rdflib.Namespace("http://schema.org/")
 namespace_manager.bind('schema', schema_pref, override=False)
 
-claim_review_class_uri = URIRef(schema_pref['ClaimReview'])
+schema_claim_review_class_uri = URIRef(schema_pref['ClaimReview'])
+schema_creative_work_class_uri = URIRef(schema_pref['CreativeWork'])
 schema_organization_class_uri = URIRef(schema_pref['Organization'])
 schema_thing_class_uri = URIRef(schema_pref['Thing'])
 
@@ -30,7 +31,8 @@ schema_date_published_property_uri = rdflib.term.URIRef(schema_pref['datePublish
 schema_language_preperty_uri = rdflib.term.URIRef(schema_pref['language'])
 schema_author_property_uri = rdflib.term.URIRef(schema_pref['author'])
 schema_same_as_property_uri = rdflib.term.URIRef(schema_pref['sameAs'])
-
+schema_citation_preperty_uri = rdflib.term.URIRef(schema_pref['citation'])
+schema_item_reviewed_property_uri = rdflib.term.URIRef(schema_pref['itemReviewed'])
 
 english_literal = Literal("english")
 
@@ -48,70 +50,96 @@ namespace_manager.bind('claimskg', claimskg_pref, override=False)
 namespace_manager.bind('base', claimskg_pref, override=True)
 
 
+def create_schema_claim_review(row, output_graph, uri_name_unique_counter):
+    claimreview_instance = URIRef(claimskg_pref['claimreview' + "/" + str(uri_name_unique_counter)])
+    output_graph.add((claimreview_instance, RDF.type, schema_claim_review_class_uri))
+    output_graph.add(
+        (claimreview_instance, claim_reviewed_property_uri, Literal(row['extra_title'])))
+    output_graph.add(
+        (claimreview_instance, schema_url_property_uri, Literal(row['claimReview_url'])))
+
+    output_graph.add(
+        (claimreview_instance, schema_date_published_property_uri,
+         Literal(row['claimReview_datePublished'])))
+    output_graph.add((claimreview_instance, schema_language_preperty_uri, english_literal))
+
+    return claimreview_instance
+
+
+def create_organization(row, output_graph):
+    author_name = row['claimReview_author_name'].lower().replace(" ", "_")
+    organization = URIRef(claimskg_pref['organization' + "/" + author_name])
+    output_graph.add((organization, RDF.type, schema_organization_class_uri))
+
+    output_graph.add(
+        (organization, schema_name_property_uri, Literal(row['claimReview_author_name'])))
+    output_graph.add((organization, schema_url_property_uri, Literal(row['claimReview_author_url'])))
+
+    return organization
+
+
+def create_creative_work(row,output_graph):
+
+    creative_work = URIRef(claimskg_pref["creativework" + "/" + row['claimReview_author_name']])
+    output_graph.add((creative_work, RDF.type, schema_creative_work_class_uri))
+
+    output_graph.add((creative_work, schema_date_published_property_uri,
+                      Literal(row['creativeWork_datePublished'])))
+
+    output_graph.add(
+        (creative_work, schema_citation_preperty_uri, Literal(row['claimReview_author_url'])))
+
+    # Creative work author instantiation
+
+    creative_work_author_value = str(row['creativeWork_author_name']).lower().replace(" ", "_")
+    creative_work_author = URIRef(claimskg_pref["creativework_author" + "/" + creative_work_author_value])
+
+    output_graph.add((creative_work_author, RDF.type, schema_thing_class_uri))
+
+    output_graph.add(
+        (creative_work_author, schema_name_property_uri, Literal(row['creativeWork_author_name'])))
+
+    output_graph.add((creative_work, schema_author_property_uri, creative_work_author))
+
+    # Todo: Reconcile author entities with DBPedia
+    output_graph.add((creative_work_author, schema_same_as_property_uri, Literal("dbpedia:link")))
+
+    return creative_work
+
 def export_rdf(pandas_dataframe, options):
     print()
     uri_name_unique_counter = 0
     entity_counter = 0
     output_graph = rdflib.Graph()
     output_graph.namespace_manager = namespace_manager
+    total_entry_count = len(pandas_dataframe)
     for column, row in pandas_dataframe.iterrows():
         uri_name_unique_counter += 1
+
+        # Progress animation with the old carriage return with no new line trick
         sys.stdout.write("{current}/{total} [{percent}%]                                                            \r"
-                         .format(current=uri_name_unique_counter, total=len(pandas_dataframe),
-                                 percent=round((uri_name_unique_counter / float(len(pandas_dataframe))) * 100, 2)))
+                         .format(current=uri_name_unique_counter, total=total_entry_count,
+                                 percent=round((uri_name_unique_counter / float(total_entry_count)) * 100, 2)))
 
         ###################
         # schema_claimreview
         ###################
-        claimreview_instance = URIRef(claimskg_pref['claimreview' + "/" + str(uri_name_unique_counter)])
-        output_graph.add((claimreview_instance, RDF.type, claim_review_class_uri))
-        output_graph.add(
-            (claimreview_instance, claim_reviewed_property_uri, Literal(row['extra_title'])))
-        output_graph.add(
-            (claimreview_instance, schema_url_property_uri, Literal(row['claimReview_url'])))
 
-        output_graph.add(
-            (claimreview_instance, schema_date_published_property_uri,
-             Literal(row['claimReview_datePublished'])))
-        output_graph.add((claimreview_instance, schema_language_preperty_uri, english_literal))
+        claimreview_instance = create_schema_claim_review(row, output_graph, uri_name_unique_counter)
 
         ####################
         # schema_organization
         ####################
-        author_name = row['claimReview_author_name'].lower().replace(" ", "_")
-        organization = URIRef(claimskg_pref['organization' + "/" + author_name])
-        output_graph.add((organization, RDF.type, schema_organization_class_uri))
 
-        output_graph.add(
-            (organization, schema_name_property_uri, Literal(row['claimReview_author_name'])))
-        output_graph.add((organization, schema_url_property_uri, Literal(row['claimReview_author_url'])))
-
+        organization = create_organization(row, output_graph)
         output_graph.add((claimreview_instance, schema_author_property_uri, organization))
 
         ####################
         # schema_creativework
         ####################
-        creative_work_author_value = str(row['creativeWork_author_name']).lower().replace(" ", "_")
-        creative_work_author = URIRef(claimskg_pref["creativework_author" + "/" + creative_work_author_value])
 
-        output_graph.add((creative_work_author, RDF.type, schema_thing_class_uri))
-
-        output_graph.add(
-            (creative_work_author, schema_name_property_uri , Literal(row['creativeWork_author_name'])))
-
-        # Todo: Reconcile author entities with DBPedia
-        output_graph.add((creative_work_author, schema_same_as_property_uri, Literal("dbpedia:link")))
-
-
-
-        creativework = URIRef(urllib.parse.quote_plus("creativework_" + row['claimReview_author_name']))
-        output_graph.add((creativework, schema_date_published_property_uri,
-                          Literal(row['creativeWork_datePublished'])))
-        output_graph.add(
-            (creativework, rdflib.term.URIRef(schema_pref['citation']), Literal(row['claimReview_author_url'])))
-        output_graph.add((creativework, rdflib.term.URIRef(schema_pref['author']), creative_work_author))
-
-        output_graph.add((claimreview_instance, rdflib.term.URIRef(schema_pref['itemReviewed']), creativework))
+        creative_work = create_creative_work(row,output_graph)
+        output_graph.add((claimreview_instance, schema_item_reviewed_property_uri, creative_work))
 
         ####################
         # schema_reviewRating
