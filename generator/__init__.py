@@ -1,5 +1,5 @@
-import sys
 import html
+import sys
 
 import rdflib
 from SPARQLWrapper import SPARQLWrapper
@@ -16,7 +16,7 @@ class ClaimsKGGenerator:
     def __init__(self, model_uri, sparql_wrapper=None, threshold=0.3):
         self._graph = rdflib.Graph()
 
-        self._sparql_wrapper = sparql_wrapper # type: SPARQLWrapper
+        self._sparql_wrapper = sparql_wrapper  # type: SPARQLWrapper
         self._threshold = threshold
 
         self.model_uri = model_uri
@@ -51,6 +51,7 @@ class ClaimsKGGenerator:
         self._schema_item_reviewed_property_uri = URIRef(self._schema_prefix['itemReviewed'])
         self._schema_alternate_name_normalized_property_uri = URIRef(self._schema_prefix['alternateName_normalized'])
         self._schema_mentions_property_uri = URIRef(self._schema_prefix['mentions'])
+        self._schema_keywords_property_uri = URIRef(self._schema_prefix['keywords'])
 
         self._english_literal = Literal("english")
 
@@ -71,7 +72,6 @@ class ClaimsKGGenerator:
         self.its_ta_confidence_property_uri = URIRef(self._its_prefix['taConfidence'])
         self.its_ta_ident_ref_property_uri = URIRef(self._its_prefix['taIdentRef'])
 
-
     def _create_schema_claim_review(self, row):
         claimreview_instance = URIRef(
             self._claimskg_prefix['claimreview' + "/" + str(self.counter.count(self._schema_claim_review_class_uri))])
@@ -84,7 +84,11 @@ class ClaimsKGGenerator:
         self._graph.add(
             (claimreview_instance, self._schema_date_published_property_uri,
              Literal(row['claimReview_datePublished'])))
-        self._graph.add((claimreview_instance, self._schema_language_preperty_uri, self._english_literal))
+        self._graph.add((claimreview_instance, self._schema_language_preperty_uri, Literal(self._english_literal)))
+
+        keywords = row['extra_tags']
+        if isinstance(keywords, str) and len(keywords) > 0:
+            self._graph.add((claimreview_instance, self._schema_keywords_property_uri, Literal(keywords)))
 
         return claimreview_instance
 
@@ -100,11 +104,12 @@ class ClaimsKGGenerator:
         return organization
 
     def _create_creative_work(self, row):
-        creative_work = URIRef(self._claimskg_prefix["creativework" + "/" + row['claimReview_author_name']])
+        creative_work = URIRef(self._claimskg_prefix["creativework" + "/" + row['claimReview_author_name'] + "/" + str(
+            self.counter.count(self._schema_creative_work_class_uri))])
         self._graph.add((creative_work, RDF.type, self._schema_creative_work_class_uri))
 
         self._graph.add((creative_work, self._schema_date_published_property_uri,
-                          Literal(row['creativeWork_datePublished'])))
+                         Literal(row['creativeWork_datePublished'])))
 
         self._graph.add(
             (creative_work, self._schema_citation_preperty_uri, Literal(row['claimReview_author_url'])))
@@ -140,7 +145,7 @@ class ClaimsKGGenerator:
         self._graph.add((rating, RDF.type, self._schema_rating_class_uri))
 
         self._graph.add((rating, self._schema_alternate_name_normalized_property_uri,
-                   Literal(row['rating_alternateName_normalized'])))
+                         Literal(row['rating_alternateName_normalized'])))
 
         self._graph.add(
             (rating, rdflib.term.URIRef(self._schema_prefix['alternateName_original']),
