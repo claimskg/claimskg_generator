@@ -15,7 +15,7 @@ def usage():
 
 if __name__ == '__main__':
     argv = sys.argv[1:]
-    options = {'output': "output.ttl", 'format': "turtle", 'resolve': True,
+    options = {'output': "output.ttl", 'format': "turtle", 'resolve': True, 'threshold': 0.3,
                'model-uri': "http://data.gesis.org/claimskg/public/"}
 
     if len(argv) == 0:
@@ -31,7 +31,7 @@ if __name__ == '__main__':
 
     try:
         opts, args = getopt.getopt(argv, "",
-                                   ("input=", "output=", "format=", "model-uri=", "resolve"))
+                                   ("input=", "output=", "format=", "model-uri=", "resolve", "threshold="))
 
         for opt, arg in opts:
             if opt == '--input':
@@ -47,6 +47,9 @@ if __name__ == '__main__':
                 options['model_uri'] = arg
             elif opt == "--resolve":
                 options['resolve'] = True
+
+            elif opt == "--threshold":
+                options['threshold'] = float(arg)
 
     except:
         print('Arguments parser error')

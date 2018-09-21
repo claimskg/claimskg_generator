@@ -13,10 +13,11 @@ from util.sparql.sparql_offset_fetcher import SparQLOffsetFetcher
 
 class ClaimsKGGenerator:
 
-    def __init__(self, model_uri, sparql_wrapper=None):
+    def __init__(self, model_uri, sparql_wrapper=None, threshold=0.3):
         self._graph = rdflib.Graph()
 
         self._sparql_wrapper = sparql_wrapper # type: SPARQLWrapper
+        self._threshold = threshold
 
         self.model_uri = model_uri
         self._namespace_manager = NamespaceManager(Graph())
@@ -154,23 +155,28 @@ class ClaimsKGGenerator:
         return rating
 
     def _create_mention(self, mention_entry):
-        mention = rdflib.term.URIRef(
-            self._claimskg_prefix["mention" + "/" + str(self.counter.count(self._nif_context_class_uri))])
+        rho_value = float(mention_entry['linkProbability'])
+        if rho_value > self._threshold:
+            mention = rdflib.term.URIRef(
+                self._claimskg_prefix["mention" + "/" + str(self.counter.count(self._nif_context_class_uri))])
 
-        self._graph.add((mention, RDF.type, self._nif_context_class_uri))
-        self._graph.add((mention, RDF.type, self._nif_RFC5147String_class_uri))
+            self._graph.add((mention, RDF.type, self._nif_context_class_uri))
+            self._graph.add((mention, RDF.type, self._nif_RFC5147String_class_uri))
 
-        self._graph.add((mention, self._nif_is_string_property_uri, Literal(mention_entry['mention'])))
-        self._graph.add((mention, self._nif_begin_index_property_uri, Literal(mention_entry['start'])))
-        self._graph.add((mention, self._nif_end_index_property_uri, Literal(mention_entry['end'])))
+            self._graph.add((mention, self._nif_is_string_property_uri, Literal(mention_entry['mention'])))
+            self._graph.add((mention, self._nif_begin_index_property_uri, Literal(mention_entry['start'])))
+            self._graph.add((mention, self._nif_end_index_property_uri, Literal(mention_entry['end'])))
 
-        # TODO: Fix values so that they aren't displayed in scientific notation
-        self._graph.add(
-            (mention, self.its_ta_confidence_property_uri, Literal(self._format_confidence_score(mention_entry))))
+            # TODO: Fix values so that they aren't displayed in scientific notation
+            self._graph.add(
+                (mention, self.its_ta_confidence_property_uri, Literal(self._format_confidence_score(mention_entry))))
 
-        entity_uri = self.resolve_entity_id(mention_entry['entity'])
-        self._graph.add((mention, self.its_ta_ident_ref_property_uri, Literal(entity_uri)))
-        return mention
+            entity_uri = self.resolve_entity_id(mention_entry['entity'])
+            self._graph.add((mention, self.its_ta_ident_ref_property_uri, Literal(entity_uri)))
+
+            return mention
+        else:
+            return None
 
     def resolve_entity_id(self, id):
         if self._sparql_wrapper is not None:
@@ -241,7 +247,8 @@ class ClaimsKGGenerator:
             if json.loads(row[u'extra_entities_claimReview_claimReviewed']):
                 for mention_entry in json.loads(row[u'extra_entities_claimReview_claimReviewed']):
                     mention = self._create_mention(mention_entry)
-                    self._graph.add((claimreview_instance, self._schema_mentions_property_uri, mention))
+                    if mention:
+                        self._graph.add((claimreview_instance, self._schema_mentions_property_uri, mention))
 
     def export_rdf(self, format):
         return self._graph.serialize(format=format, encoding='utf-8')
