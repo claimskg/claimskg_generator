@@ -8,7 +8,7 @@ Python 3.x
 To install the dependencies please use: `pip3 install -r requirements.txt`
 
 ### Command-line usage
-- Get help use  [under implementation]
+- For usage information you may use  [work in progress]
 ```shell
     python3 export.py -h
 ```
