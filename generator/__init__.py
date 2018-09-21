@@ -2,17 +2,21 @@ import sys
 import html
 
 import rdflib
-from pandas import json
+from SPARQLWrapper import SPARQLWrapper
+from pandas.io import json
 from rdflib import URIRef, Literal, Graph
 from rdflib.namespace import NamespaceManager, RDF
 
 from util import TypedCounter
+from util.sparql.sparql_offset_fetcher import SparQLOffsetFetcher
 
 
 class ClaimsKGGenerator:
 
-    def __init__(self, model_uri):
+    def __init__(self, model_uri, sparql_wrapper=None):
         self._graph = rdflib.Graph()
+
+        self._sparql_wrapper = sparql_wrapper # type: SPARQLWrapper
 
         self.model_uri = model_uri
         self._namespace_manager = NamespaceManager(Graph())
@@ -65,6 +69,7 @@ class ClaimsKGGenerator:
 
         self.its_ta_confidence_property_uri = URIRef(self._its_prefix['taConfidence'])
         self.its_ta_ident_ref_property_uri = URIRef(self._its_prefix['taIdentRef'])
+
 
     def _create_schema_claim_review(self, row):
         claimreview_instance = URIRef(
@@ -159,11 +164,28 @@ class ClaimsKGGenerator:
         self._graph.add((mention, self._nif_begin_index_property_uri, Literal(mention_entry['start'])))
         self._graph.add((mention, self._nif_end_index_property_uri, Literal(mention_entry['end'])))
 
-        # TODO: Fix values so that they aren't diplayed in scientific notation
+        # TODO: Fix values so that they aren't displayed in scientific notation
         self._graph.add(
             (mention, self.its_ta_confidence_property_uri, Literal(self._format_confidence_score(mention_entry))))
-        self._graph.add((mention, self.its_ta_ident_ref_property_uri, Literal(mention_entry['entity'])))
+
+        entity_uri = self.resolve_entity_id(mention_entry['entity'])
+        self._graph.add((mention, self.its_ta_ident_ref_property_uri, Literal(entity_uri)))
         return mention
+
+    def resolve_entity_id(self, id):
+        if self._sparql_wrapper is not None:
+            fetcher = SparQLOffsetFetcher(self._sparql_wrapper, 10000, """            
+                        ?concept dbo:wikiPageID {id}.
+                        """.format(id=id),
+                                          "?concept")
+            result = fetcher.fetch_all()
+            if len(result) > 0:
+                uri = result[0]['concept']['value']
+            else:
+                uri = id
+            return uri
+        else:
+            return "tagme://" + str(id)
 
     @staticmethod
     def _format_confidence_score(mention_entry):
@@ -176,11 +198,11 @@ class ClaimsKGGenerator:
 
         self._graph.namespace_manager = self._namespace_manager
         total_entry_count = len(pandas_dataframe)
+
         for column, row in pandas_dataframe.iterrows():
             row_counter += 1
 
             # Progress animation with the old carriage return with no new line trick
-            print("Generating model from CSV data...")
             sys.stdout.write(
                 "{current}/{total} [{percent}%]                                                            \r"
                     .format(current=row_counter, total=total_entry_count,
