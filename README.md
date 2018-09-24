@@ -1,5 +1,7 @@
 # claimskg_generator
-The data lifting module for ClaimsKG that creates the RDF/LOD dataset instantiation from the model 
+The data lifting module for ClaimsKG that creates the RDF/LOD dataset instantiation from the ClaimsKG model (illustrated hereafter).
+
+![](model.png)
 
 ### Installation & Requirements
 
@@ -17,5 +19,6 @@ To install the dependencies you may use: `pip3 install -r requirements.txt`
   * `--output [file]` Specifies the output file for the model (default: out.ttl)
   * `--format [format]` Specifies the format of the output serialization. You may use any of the supported formats in the `rdflib` package (xml', 'n3', 'turtle', 'nt', 'pretty-xml', 'trix', 'trig' and 'nquads'; default: turtle)
   * `--model-uri` The base URI of the model (by default `http://data.gesis.org/claimskg/public/`) 
-  * `--resolve` Specifies whether to resolve the Wikipedia page identifiers for TagMe annotations to DBPedia URIs. If this option is activated, the resolution is performed through SPARQL queries to the official DBPedia endpoint, which requires you to have an active Internet connection. Additionally, you will need a running instance of `redis-server` as the results of the queries are cached to prevent unnecessary queries from being performed. 
+  * `--resolve` Specifies whether to resolve the Wikipedia page identifiers for TagMe annotations to DBPedia URIs. If this option is activated, the resolution is performed through SPARQL queries to the official DBPedia endpoint, which requires you to have an active Internet connection. Additionally, you will need a running instance of `redis-server` as the results of the queries are cached to prevent unnecessary queries from being performed. If resolve is not supplied, all entities will have URIs of the form `tagme://wikpediaPageID`.
   * `--threshold [float_value]` If `--resolve` is present, specifies the cutoff confidence threshold to include a TagMe annotations as a mention. The TagMe documentation recommends a value between 0.1 and 0.3 (default 0.3)
+  * `--include-body` If `--include-body` is supplied, the body of the claim review is included in the `schema:ClaimReview` instances through the `schema:reviewBody` property.
