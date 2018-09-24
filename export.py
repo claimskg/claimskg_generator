@@ -16,7 +16,7 @@ def usage():
 if __name__ == '__main__':
     argv = sys.argv[1:]
     options = {'output': "output.ttl", 'format': "turtle", 'resolve': True, 'threshold': 0.3,
-               'model-uri': "http://data.gesis.org/claimskg/public/"}
+               'model-uri': "http://data.gesis.org/claimskg/", 'include-body': False}
 
     if len(argv) == 0:
         print('You must pass some parameters. Use \"-h\" to display the present help information.')
@@ -31,7 +31,8 @@ if __name__ == '__main__':
 
     try:
         opts, args = getopt.getopt(argv, "",
-                                   ("input=", "output=", "format=", "model-uri=", "resolve", "threshold="))
+                                   ("input=", "output=", "format=", "model-uri=", "resolve", "threshold=",
+                                    "include-body"))
 
         for opt, arg in opts:
             if opt == '--input':
@@ -47,6 +48,8 @@ if __name__ == '__main__':
                 options['model_uri'] = arg
             elif opt == "--resolve":
                 options['resolve'] = True
+            elif opt == "--include-body":
+                options['include-body'] = True
 
             elif opt == "--threshold":
                 options['threshold'] = float(arg)
@@ -70,7 +73,8 @@ if __name__ == '__main__':
     pandas_frame = pandas.read_csv(options['input'])
 
     generator = ClaimsKGGenerator(model_uri=options['model-uri'],
-                                  sparql_wrapper=sparql_wrapper)
+                                  sparql_wrapper=sparql_wrapper, include_body=options['include-body'],
+                                  threshold=options['threshold'], resolve=options['resolve'])
 
     print("Generating model from CSV data...")
     generator.generate_model(pandas_frame)
