@@ -1,5 +1,7 @@
+import datetime
 import html
 import sys
+import urllib.parse
 import uuid
 from typing import List
 
@@ -7,29 +9,28 @@ import rdflib
 from SPARQLWrapper import SPARQLWrapper
 from pandas.io import json
 from rdflib import URIRef, Literal, Graph
-from rdflib.namespace import NamespaceManager, RDF
+from rdflib.namespace import NamespaceManager, RDF, OWL, XSD
 
+import generator.ratings
+from reconciler import ClaimLogicalView, FactReconciler
 from util import TypedCounter
 from util.sparql.sparql_offset_fetcher import SparQLOffsetFetcher
+from vsm.embeddings import Embeddings
 
 
 def _row_string_value(row, key):
     value = row[key]
     if not isinstance(value, str):
-        value = ""
-    return str(value)
+        str_value = str(value)
+        if "nan" == str_value:
+            value = ""
+        else:
+            value = str_value
+    return value
 
 
 def _row_string_values(row, keys: List[str]):
     return [_row_string_value(row, key) for key in keys]
-
-
-_normalized_rating_values = {
-    "FALSE": 1,
-    "MIXTURE": 2,
-    "TRUE": 3,
-    "OTHER": -1
-}
 
 
 class ClaimsKGURIGenerator:
@@ -55,7 +56,7 @@ class ClaimsKGURIGenerator:
         return URIRef(self._claimskg_prefix["organization/" + uuid_key])
 
     def claimskg_organization_uri(self):
-        return URIRef(self._claimskg_prefix[self.base_uri + "/organization/claimskg"])
+        return URIRef(self._claimskg_prefix["organization/claimskg"])
 
     def creative_work_author_uri(self, row):
         uuid_key = "".join(_row_string_values(row, ["creativeWork_author_name", "creativeWork_author_sameAs"]))
@@ -64,11 +65,13 @@ class ClaimsKGURIGenerator:
 
     def create_original_rating_uri(self, row):
         uuid_key = "_".join(
-            _row_string_values(row, ["claimReview_author_name", "rating_alternateName"])).lower().replace(" ", "_")
+            _row_string_values(row, ["claimReview_author_name", "rating_alternateName",
+                                     "rating_ratingValue"])).lower().replace(" ", "_").replace("\n", "_")
         return URIRef(self._claimskg_prefix["rating/original/" + uuid_key])
 
-    def create_normalized_rating_uri(self, row):
-        uuid_key = "claimskg_" + _row_string_value(row, "rating_alternateName_normalized").lower()
+    def create_normalized_rating_uri(self, normalized_rating):
+        rating_name = str(normalized_rating.name)
+        uuid_key = "claimskg_" + rating_name
         return URIRef(self._claimskg_prefix["rating/normalized/" + uuid_key])
 
     def mention_uri(self, begin, end, text, ref, confidence):
@@ -77,9 +80,14 @@ class ClaimsKGURIGenerator:
             self._claimskg_prefix["mention/" + str(uuid.uuid5(namespace=uuid.NAMESPACE_URL, name=uuid_key))])
 
 
+def _normalize_text_fragment(text: str):
+    return text.replace("\"", "'")
+
+
 class ClaimsKGGenerator:
 
-    def __init__(self, model_uri, sparql_wrapper=None, threshold=0.3, include_body: bool = False, resolve: bool = True):
+    def __init__(self, model_uri, sparql_wrapper=None, threshold=0.3, include_body: bool = False, resolve: bool = True,
+                 use_caching: bool = False):
         self._graph = rdflib.Graph()
 
         self._sparql_wrapper = sparql_wrapper  # type: SPARQLWrapper
@@ -87,6 +95,7 @@ class ClaimsKGGenerator:
         self._threshold = threshold
         self._include_body = include_body
         self._resolve = resolve
+        self._use_caching = use_caching
 
         self.model_uri = model_uri
         self._namespace_manager = NamespaceManager(Graph())
@@ -127,9 +136,12 @@ class ClaimsKGGenerator:
         self._schema_headline_property_uri = URIRef(self._schema_prefix['headline'])
         self._schema_review_body_property_uri = URIRef(self._schema_prefix['reviewBody'])
 
+        self._iso1_language_tag = "en"
+        self._iso3_language_tag = "eng"
+
         self._english_uri = URIRef(self._claimskg_prefix["language/English"])
         self._graph.add((self._english_uri, RDF.type, self._schema_language_class_uri))
-        self._graph.add((self._english_uri, self._schema_alternate_name_property_uri, Literal("eng")))
+        self._graph.add((self._english_uri, self._schema_alternate_name_property_uri, Literal(self._iso1_language_tag)))
         self._graph.add((self._english_uri, self._schema_description_property_uri, Literal("English")))
 
         self._nif_prefix = rdflib.Namespace("http://persistence.uni-leipzig.org/nlp2rdf/ontologies/nif-core#")
@@ -149,37 +161,51 @@ class ClaimsKGGenerator:
         self.its_ta_confidence_property_uri = URIRef(self._its_prefix['taConfidence'])
         self.its_ta_ident_ref_property_uri = URIRef(self._its_prefix['taIdentRef'])
 
-    def _create_schema_claim_review(self, row):
+        self._logical_view_claims = []  # type: List[ClaimLogicalView]
+
+    def _create_schema_claim_review(self, row, claim: ClaimLogicalView):
         claim_review_instance = self._uri_generator.claim_review_uri(row)
         self._graph.add((claim_review_instance, RDF.type, self._schema_claim_review_class_uri))
 
+        claim_reviewed_value = _normalize_text_fragment(_row_string_value(row, "claimReview_claimReviewed"))
         self._graph.add(
             (claim_review_instance, self._schema_claim_reviewed_property_uri,
-             Literal(_row_string_value(row, "claimReview_claimReviewed"))))
+             Literal(claim_reviewed_value,
+                     lang=self._iso1_language_tag)))
 
         headline_value = _row_string_value(row, "extra_title")
 
         if len(headline_value) > 0:
             self._graph.add(
-                (claim_review_instance, self._schema_headline_property_uri, Literal(headline_value)))
+                (claim_review_instance, self._schema_headline_property_uri,
+                 Literal(headline_value, lang=self._iso1_language_tag)))
+            claim.text_fragments.append(headline_value)
 
         # Include body only if the option is enabled
 
         body_value = _row_string_value(row, "extra_body")
-        if self._include_body and len(body_value) > 0:
-            self._graph.add((claim_review_instance, self._schema_review_body_property_uri, Literal(body_value)))
+        if len(body_value) > 0:
+            claim.text_fragments.append(_normalize_text_fragment(body_value))
+            if self._include_body:
+                self._graph.add((claim_review_instance, self._schema_review_body_property_uri,
+                                 Literal(body_value, lang=self._iso1_language_tag)))
 
         self._graph.add(
             (claim_review_instance, self._schema_url_property_uri, URIRef(row['claimReview_url'])))
 
+        review_date = row['claimReview_datePublished']
         self._graph.add(
             (claim_review_instance, self._schema_date_published_property_uri,
-             Literal(row['claimReview_datePublished'])))
+             Literal(review_date, datatype=XSD.date)))
+        claim.review_date = datetime.datetime.strptime(review_date, "%Y-%m-%d").date()
         self._graph.add((claim_review_instance, self._schema_in_language_preperty_uri, self._english_uri))
 
         keywords = row['extra_tags']
         if isinstance(keywords, str) and len(keywords) > 0:
-            self._graph.add((claim_review_instance, self._schema_keywords_property_uri, Literal(keywords)))
+            self._graph.add((claim_review_instance, self._schema_keywords_property_uri,
+                             Literal(keywords, lang=self._iso1_language_tag)))
+            for keyword in keywords.split(";"):
+                claim.keywords.append(keyword.strip())
 
         return claim_review_instance
 
@@ -188,7 +214,8 @@ class ClaimsKGGenerator:
         self._graph.add((organization, RDF.type, self._schema_organization_class_uri))
 
         self._graph.add(
-            (organization, self._schema_name_property_uri, Literal(row['claimReview_author_name'])))
+            (organization, self._schema_name_property_uri,
+             Literal(row['claimReview_author_name'], lang=self._iso1_language_tag)))
 
         author_url = _row_string_value(row, 'claimReview_author_url')
         if len(author_url) > 0:
@@ -205,25 +232,30 @@ class ClaimsKGGenerator:
 
         self._graph.add((organization, self._schema_url_property_uri, URIRef(self.model_uri)))
 
-    def _create_creative_work(self, row):
+    def _create_creative_work(self, row, claim: ClaimLogicalView):
         creative_work = self._uri_generator.creative_work_uri(row)
         self._graph.add((creative_work, RDF.type, self._schema_creative_work_class_uri))
 
         date_published_value = _row_string_value(row, "creativeWork_datePublished")
         if len(date_published_value) > 0:
-            self._graph.add((creative_work, self._schema_date_published_property_uri, Literal(date_published_value)))
+            self._graph.add((creative_work, self._schema_date_published_property_uri,
+                             Literal(date_published_value, datatype=XSD.date)))
+            claim.claim_date = datetime.datetime.strptime(date_published_value, "%Y-%m-%d").date()
 
         links = row['extra_refered_links']
         if not isinstance(links, float):
             links = links[1:-1].split(",")
             for link in links:
-                if len(link) > 0 and link.strip() != "#":
+                if len(link.strip()) > 0 and link.strip()[0] != "#":
+                    claim.links.append(link)
                     self._graph.add(
-                        (creative_work, self._schema_citation_preperty_uri, Literal(link.strip())))
+                        (creative_work, self._schema_citation_preperty_uri,
+                         URIRef(urllib.parse.quote_plus(link.strip()))))
 
         # Creative work author instantiation
 
         author_value = _row_string_value(row, "creativeWork_author_name")
+        claim.author = author_value
 
         if len(author_value) > 0:
             creative_work_author = self._uri_generator.creative_work_author_uri(row)
@@ -231,7 +263,8 @@ class ClaimsKGGenerator:
             self._graph.add((creative_work_author, RDF.type, self._schema_thing_class_uri))
 
             self._graph.add(
-                (creative_work_author, self._schema_name_property_uri, Literal(author_value)))
+                (creative_work_author, self._schema_name_property_uri,
+                 Literal(author_value, lang=self._iso1_language_tag)))
             self._graph.add((creative_work, self._schema_author_property_uri, creative_work_author))
 
         # Todo: Reconcile author entities with DBPedia
@@ -252,26 +285,30 @@ class ClaimsKGGenerator:
             (original_rating, self._schema_alternate_name_property_uri,
              Literal(escaped_alternate_rating_name)))
         self._graph.add(
-            (original_rating, self._schema_rating_value_property_uri, Literal(int(row['rating_ratingValue']))))
+            (original_rating, self._schema_rating_value_property_uri,
+             Literal(int(row['rating_ratingValue']), datatype=XSD.integer)))
         organization = self._uri_generator.organization_uri(row)
         self._graph.add((original_rating, self._schema_author_property_uri, organization))
 
-        normalized_rating = self._uri_generator.create_normalized_rating_uri(row)
+        normalized_rating_enum = ratings.normalize(_row_string_value(row, "claimReview_author_name").lower(),
+                                                   _row_string_value(row, "rating_alternateName").lower())
+        normalized_rating = self._uri_generator.create_normalized_rating_uri(normalized_rating_enum)
         self._graph.add((normalized_rating, RDF.type, self._schema_rating_class_uri))
         self._graph.add(
             (normalized_rating, self._schema_alternate_name_property_uri,
-             Literal(row['rating_alternateName_normalized'])))
+             Literal(str(normalized_rating_enum.name), lang=self._iso1_language_tag)))
 
         self._graph.add(
             (normalized_rating, self._schema_rating_value_property_uri,
-             Literal(_normalized_rating_values[_row_string_value(row, "rating_alternateName_normalized")])))
+             Literal(normalized_rating_enum.value,
+                     datatype=XSD.integer)))
 
         claimskg_org = self._uri_generator.claimskg_organization_uri()
         self._graph.add((normalized_rating, self._schema_author_property_uri, claimskg_org))
 
         return original_rating, normalized_rating
 
-    def _create_mention(self, mention_entry):
+    def _create_mention(self, mention_entry, claim: ClaimLogicalView):
         rho_value = float(mention_entry['linkProbability'])
         if rho_value > self._threshold:
 
@@ -285,15 +322,18 @@ class ClaimsKGGenerator:
             self._graph.add((mention, RDF.type, self._nif_context_class_uri))
             self._graph.add((mention, RDF.type, self._nif_RFC5147String_class_uri))
 
-            self._graph.add((mention, self._nif_is_string_property_uri, Literal(text)))
-            self._graph.add((mention, self._nif_begin_index_property_uri, Literal(int(start))))
-            self._graph.add((mention, self._nif_end_index_property_uri, Literal(int(end))))
+            self._graph.add((mention, self._nif_is_string_property_uri,
+                             Literal(text, lang=self._iso1_language_tag)))
+            self._graph.add((mention, self._nif_begin_index_property_uri, Literal(int(start), datatype=XSD.integer)))
+            self._graph.add((mention, self._nif_end_index_property_uri, Literal(int(end), datatype=XSD.integer)))
 
             # TODO: Fix values so that they aren't displayed in scientific notation
             self._graph.add(
-                (mention, self.its_ta_confidence_property_uri, Literal(self._format_confidence_score(mention_entry))))
+                (mention, self.its_ta_confidence_property_uri,
+                 Literal(float(self._format_confidence_score(mention_entry)), datatype=XSD.float)))
 
             self._graph.add((mention, self.its_ta_ident_ref_property_uri, URIRef(entity_uri)))
+            claim.entities.append(entity_uri)
 
             return mention
         else:
@@ -326,60 +366,57 @@ class ClaimsKGGenerator:
 
         self._graph.namespace_manager = self._namespace_manager
         total_entry_count = len(pandas_dataframe)
+        one_per_cent = int(total_entry_count * 0.01)
 
         for column, row in pandas_dataframe.iterrows():
             row_counter += 1
 
             # Progress animation with the old carriage return with no new line trick
-            sys.stdout.write(
-                "{current}/{total} [{percent}%]                                                            \r"
-                    .format(current=row_counter, total=total_entry_count,
-                            percent=round((row_counter / float(total_entry_count)) * 100, 2)))
+            if row_counter % one_per_cent == 0:
+                sys.stdout.write(
+                    " [{percent}%] {current}/{total}                                                       \r".format(
+                        current=row_counter, total=total_entry_count,
+                        percent=int((row_counter / float(total_entry_count)) * 100)))
 
-            ###################
-            # schema_claimreview
-            ###################
+            logical_claim = ClaimLogicalView()  # Instance holding claim raw information for mapping generation
 
-            claimreview_instance = self._create_schema_claim_review(row)
-
-            ####################
-            # schema_organization
-            ####################
+            claim_review_instance = self._create_schema_claim_review(row, logical_claim)
 
             organization = self._create_organization(row)
-            self._graph.add((claimreview_instance, self._schema_author_property_uri, organization))
+            self._graph.add((claim_review_instance, self._schema_author_property_uri, organization))
 
-            ####################
-            # schema_creativework
-            ####################
-
-            creative_work = self._create_creative_work(row)
-            self._graph.add((claimreview_instance, self._schema_item_reviewed_property_uri, creative_work))
-
-            ####################
-            # schema_reviewRating
-            ####################
+            creative_work = self._create_creative_work(row, logical_claim)
+            self._graph.add((claim_review_instance, self._schema_item_reviewed_property_uri, creative_work))
+            logical_claim.creative_work_uri = creative_work
 
             original, normalized = self._create_review_rating(row)
-            self._graph.add((claimreview_instance, rdflib.term.URIRef(self._schema_prefix['reviewRating']), original))
-            self._graph.add((claimreview_instance, rdflib.term.URIRef(self._schema_prefix['reviewRating']), normalized))
+            self._graph.add((claim_review_instance, rdflib.term.URIRef(self._schema_prefix['reviewRating']), original))
+            self._graph.add(
+                (claim_review_instance, rdflib.term.URIRef(self._schema_prefix['reviewRating']), normalized))
 
-            ##############
-            ### mentions
-            #############
-            # For claim review
+            # For claim review mentions
             if json.loads(row[u'extra_entities_claimReview_claimReviewed']):
                 for mention_entry in json.loads(row[u'extra_entities_claimReview_claimReviewed']):
-                    mention = self._create_mention(mention_entry)
+                    mention = self._create_mention(mention_entry, logical_claim)
                     if mention:
-                        self._graph.add((claimreview_instance, self._schema_mentions_property_uri, mention))
+                        self._graph.add((claim_review_instance, self._schema_mentions_property_uri, mention))
 
-            # For Creative Work
+            # For Creative Work mentions
             if json.loads(row[u'extra_entities_body']):
                 for mention_entry in json.loads(row[u'extra_entities_claimReview_claimReviewed']):
-                    mention = self._create_mention(mention_entry)
+                    mention = self._create_mention(mention_entry, logical_claim)
                     if mention:
                         self._graph.add((creative_work, self._schema_mentions_property_uri, mention))
 
+            self._logical_view_claims.append(logical_claim)
+
     def export_rdf(self, format):
         return self._graph.serialize(format=format, encoding='utf-8')
+
+    def reconcile_claims(self, embeddings: Embeddings, theta, entity_weight, keyword_weight,
+                         link_weight, author_weight, text_weight):
+        reconciler = FactReconciler(embeddings, self._use_caching)
+        mappings = reconciler.generate_mappings(self._logical_view_claims, theta, entity_weight, keyword_weight,
+                                                link_weight, author_weight, text_weight)
+        for (source, target) in mappings:
+            self._graph.add((source, OWL.sameAs, target))

@@ -143,14 +143,9 @@ dump.rdb
 
 .idea/
 
-identified_drug.ttl
-identified_gene.ttl
-identified_phenotype.ttl
-
-
-reconciler_configuration.yaml
-
 *.zip
 
 resources/catalog-v001.xml
 resources/.project
+
+*.yaml
