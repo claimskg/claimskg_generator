@@ -136,6 +136,7 @@ class Embeddings:
         right_embedding = self.directional_context_embedding(right_context)
         pass
 
+    # @memory.cache
     def directional_context_embedding(self, context: List[str]) -> ndarray:
         transformer = SparsePCA(n_components=1, max_iter=10000, n_jobs=4)
         if len(context) > 2:

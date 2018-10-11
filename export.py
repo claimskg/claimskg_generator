@@ -1,12 +1,13 @@
 import getopt
+import re
 import sys
 
 import pandas
 from SPARQLWrapper import SPARQLWrapper
 from ruamel import yaml
 
-from generator import ClaimsKGGenerator
-from vsm.embeddings import Embeddings
+from claimskg.generator import ClaimsKGGenerator
+from claimskg.vsm.embeddings import Embeddings
 
 
 def usage():
@@ -17,9 +18,6 @@ def usage():
 
 if __name__ == '__main__':
     argv = sys.argv[1:]
-    options = {'output': "output.ttl", 'format': "turtle", 'resolve': True, 'threshold': 0.3,
-               'model-uri': "http://data.gesis.org/claimskg/", 'include-body': False, 'reconcile': -1.0,
-               'caching': False}
 
     if len(argv) == 0:
         print('You must pass some parameters. Use \"-h\" to display the present help information.')
@@ -30,12 +28,19 @@ if __name__ == '__main__':
         usage()
         exit()
 
-    configuration_dict = config_dict = yaml.load(open("configuration.yaml", "r"))
+    configuration_dict = config_dict = yaml.load(open("configuration.yaml", "r"), Loader=yaml.Loader)
+    options = {'output': "output.ttl", 'format': "turtle", 'resolve': True, 'threshold': 0.3,
+               'model-uri': "http://data.gesis.org/claimskg/", 'include-body': False, 'reconcile': -1.0,
+               'caching': False, 'seed': None, 'sample': None, 'mappings-file': "./mappings.csv"}
+
+    # Overriding hard-coded defaults with values from configuration file
+    for (key, value) in configuration_dict.items():
+            options[key] = value
 
     try:
         opts, args = getopt.getopt(argv, "",
                                    ("input=", "output=", "format=", "model-uri=", "resolve", "threshold=",
-                                    "include-body", "reconcile=", "caching"))
+                                    "include-body", "reconcile=", "caching", "sample=", "seed=", "mappings-file="))
 
         for opt, arg in opts:
             if opt == '--input':
@@ -56,12 +61,17 @@ if __name__ == '__main__':
                 options['reconcile'] = float(arg)
             elif opt == "--caching":
                 options['caching'] = True
+            elif opt == "--sample":
+                options['sample'] = int(arg)
+            elif opt == "--seed":
+                options['seed'] = int(arg)
+            elif opt == "--mappings-file":
+                options['mappings-file'] = arg
 
     except:
         print('Arguments parser error')
         usage()
         exit()
-
 
     if "input" not in options.keys():
         print("Missing mandatory parameter --input")
@@ -72,30 +82,38 @@ if __name__ == '__main__':
     if options['resolve']:
         sparql_wrapper = SPARQLWrapper("https://dbpedia.org/sparql/")
 
+    print()
     print("Loading data...")
     pandas_frame = pandas.read_csv(options['input'])
 
     theta = options['reconcile']
     embeddings = None
     if theta > 0:
-        embeddings = Embeddings.load_from_file_lazy(configuration_dict['embeddings_path'])
+        embeddings = Embeddings.load_from_file_lazy(options['embeddings-path'])
 
     generator = ClaimsKGGenerator(model_uri=options['model-uri'],
                                   sparql_wrapper=sparql_wrapper, include_body=options['include-body'],
                                   threshold=options['threshold'], resolve=options['resolve'],
                                   use_caching=options['caching'])
 
+    print()
     print("Generating model from CSV data...")
     generator.generate_model(pandas_frame)
 
     if theta > 0:
-        print("Serializing pre-reconciliation graph to {file} ...".format(file=options["output"]))
-    else:
-        print("Serializing graph to {file} ...".format(file=options["output"]))
+        print()
+        print("Reconciling claims...")
+        generator.reconcile_claims(embeddings, theta=theta, keyword_weight=0.2, link_weight=0.1, text_weight=0.5,
+                                   entity_weight=0.2, mappings_file_path=options['mappings-file'],
+                                   samples=options['sample'], seed=options['seed'])
+
+    print()
+    print("\nSerializing graph...")
     output = generator.export_rdf(options['format'])
     file = open(options['output'], "w")
-    file.write(output.decode("utf-8"))
 
-    if theta > 0:
-        print("Reconciling claims...")
-        generator.reconcile_claims(embeddings, theta, 0.2, 0.2, 0.1, 0.1, 0.4)
+    print()
+    print("Writing to {file} ...\t\t\t".format(file=options["output"]))
+    file.write(output.decode("utf-8"))
+    file.flush()
+    file.close()
