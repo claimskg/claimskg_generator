@@ -1,7 +1,6 @@
 import datetime
 import html
 import re
-import urllib.parse
 import uuid
 from typing import List
 from urllib.parse import urlparse
@@ -18,7 +17,6 @@ from claimskg.generator.statistics import ClaimsKGStatistics
 from claimskg.reconciler import FactReconciler
 from claimskg.util import TypedCounter
 from claimskg.util.sparql.sparql_offset_fetcher import SparQLOffsetFetcher
-from claimskg.vsm.embeddings import Embeddings
 
 _is_valid_url_regex = re.compile(
     r'^(?:http|ftp)s?://'  # http:// or https://
@@ -56,7 +54,8 @@ def _row_string_values(row, keys: List[str]):
 
 class ClaimLogicalView:
     def __init__(self):
-        self.entities = []
+        self.review_entities = []
+        self.claim_entities = []
         self.keywords = []
         self.links = []
         self.text_fragments = []
@@ -65,6 +64,8 @@ class ClaimLogicalView:
         self.creative_work_uri = None
         self.claim_date = None
         self.review_date = None
+        self.has_body_text = False
+        self.has_headline = False
 
 
 class ClaimsKGURIGenerator:
@@ -115,7 +116,7 @@ class ClaimsKGURIGenerator:
 
 
 def _normalize_text_fragment(text: str):
-    return text.replace("\"", "'")
+    return text.replace("\"\"", "\"").replace("\"", "'")
 
 
 class ClaimsKGGenerator:
@@ -204,11 +205,11 @@ class ClaimsKGGenerator:
         claim_review_instance = self._uri_generator.claim_review_uri(row)
         self._graph.add((claim_review_instance, RDF.type, self._schema_claim_review_class_uri))
 
-        claim_reviewed_value = _normalize_text_fragment(_row_string_value(row, "claimReview_claimReviewed"))
-        self._graph.add(
-            (claim_review_instance, self._schema_claim_reviewed_property_uri,
-             Literal(claim_reviewed_value,
-                     lang=self._iso1_language_tag)))
+        # claim_reviewed_value = _normalize_text_fragment(_row_string_value(row, "claimReview_claimReviewed"))
+        # self._graph.add(
+        #     (claim_review_instance, self._schema_claim_reviewed_property_uri,
+        #      Literal(claim_reviewed_value,
+        #              lang=self._iso1_language_tag)))
 
         headline_value = _row_string_value(row, "extra_title")
 
@@ -217,11 +218,13 @@ class ClaimsKGGenerator:
                 (claim_review_instance, self._schema_headline_property_uri,
                  Literal(headline_value, lang=self._iso1_language_tag)))
             claim.text_fragments.append(headline_value)
+            claim.has_headline = True
 
         # Include body only if the option is enabled
 
         body_value = _row_string_value(row, "extra_body")
         if len(body_value) > 0:
+            claim.has_body_text = True
             claim.text_fragments.append(_normalize_text_fragment(body_value))
             if self._include_body:
                 self._graph.add((claim_review_instance, self._schema_review_body_property_uri,
@@ -236,13 +239,6 @@ class ClaimsKGGenerator:
              Literal(review_date, datatype=XSD.date)))
         claim.review_date = datetime.datetime.strptime(review_date, "%Y-%m-%d").date()
         self._graph.add((claim_review_instance, self._schema_in_language_preperty_uri, self._english_uri))
-
-        keywords = row['extra_tags']
-        if isinstance(keywords, str) and len(keywords) > 0:
-            self._graph.add((claim_review_instance, self._schema_keywords_property_uri,
-                             Literal(keywords, lang=self._iso1_language_tag)))
-            for keyword in keywords.split(";"):
-                claim.keywords.append(keyword.strip())
 
         return claim_review_instance
 
@@ -281,6 +277,13 @@ class ClaimsKGGenerator:
                              Literal(date_published_value, datatype=XSD.date)))
             claim.claim_date = datetime.datetime.strptime(date_published_value, "%Y-%m-%d").date()
 
+        keywords = row['extra_tags']
+        if isinstance(keywords, str) and len(keywords) > 0:
+            self._graph.add((creative_work, self._schema_keywords_property_uri,
+                             Literal(keywords, lang=self._iso1_language_tag)))
+            for keyword in keywords.split(";"):
+                claim.keywords.append(keyword.strip())
+
         links = row['extra_refered_links']
         author_url = _row_string_value(row, 'claimReview_author_url')
         if not isinstance(links, float):
@@ -297,8 +300,9 @@ class ClaimsKGGenerator:
                         self._graph.add(
                             (creative_work, self._schema_citation_preperty_uri,
                              URIRef(
-                                 parsed_url.scheme + "://" + parsed_url.netloc + parsed_url.path + urllib.parse.quote_plus(
-                                     parsed_url.query))))
+                                 parsed_url.scheme + "://" + parsed_url.netloc + parsed_url.path + "?" +
+                                 parsed_url.query.replace("|", "%7C").replace("^", "%5E").replace("\\", "%5C").replace(
+                                     "{", "%7B").replace("}", "%7D").replace("&", "%26").replace("=", "%3D"))))
                     except:
                         pass
         # Creative work author instantiation
@@ -363,7 +367,7 @@ class ClaimsKGGenerator:
 
         return original_rating, normalized_rating
 
-    def _create_mention(self, mention_entry, claim: ClaimLogicalView):
+    def _create_mention(self, mention_entry, claim: ClaimLogicalView, in_review):
         rho_value = float(mention_entry['linkProbability'])
         if rho_value > self._threshold:
 
@@ -389,7 +393,10 @@ class ClaimsKGGenerator:
                  Literal(float(self._format_confidence_score(mention_entry)), datatype=XSD.float)))
 
             self._graph.add((mention, self.its_ta_ident_ref_property_uri, URIRef(entity_uri)))
-            claim.entities.append(entity_uri)
+            if in_review:
+                claim.review_entities.append(entity_uri)
+            else:
+                claim.claim_entities.append(entity_uri)
 
             return mention
         else:
@@ -428,7 +435,7 @@ class ClaimsKGGenerator:
 
         progress_bar = tqdm(total=len(pandas_dataframe))
 
-        for column, row in pandas_dataframe.iterrows():
+        for index, row in pandas_dataframe.iterrows():
             row_counter += 1
 
             if row_counter % one_per_cent == 0:
@@ -456,16 +463,16 @@ class ClaimsKGGenerator:
             # For claim review mentions
             if json.loads(row[u'extra_entities_claimReview_claimReviewed']):
                 for mention_entry in json.loads(row[u'extra_entities_claimReview_claimReviewed']):
-                    mention = self._create_mention(mention_entry, logical_claim)
+                    mention = self._create_mention(mention_entry, logical_claim, True)
                     if mention:
-                        self._graph.add((claim_review_instance, self._schema_mentions_property_uri, mention))
+                        self._graph.add((creative_work, self._schema_mentions_property_uri, mention))
 
             # For Creative Work mentions
             if json.loads(row[u'extra_entities_body']):
-                for mention_entry in json.loads(row[u'extra_entities_claimReview_claimReviewed']):
-                    mention = self._create_mention(mention_entry, logical_claim)
+                for mention_entry in json.loads(row[u'extra_entities_body']):
+                    mention = self._create_mention(mention_entry, logical_claim, False)
                     if mention:
-                        self._graph.add((creative_work, self._schema_mentions_property_uri, mention))
+                        self._graph.add((claim_review_instance, self._schema_mentions_property_uri, mention))
 
             self._logical_view_claims.append(logical_claim)
             self.global_statistics.compute_stats_for_review(logical_claim)
@@ -485,7 +492,7 @@ class ClaimsKGGenerator:
             self.per_source_statistics[site].output_stats()
         return graph_serialization
 
-    def reconcile_claims(self, embeddings: Embeddings, theta, keyword_weight,
+    def reconcile_claims(self, embeddings, theta, keyword_weight,
                          link_weight, text_weight, entity_weight, mappings_file_path=None, seed=None, samples=None):
         reconciler = FactReconciler(embeddings, self._use_caching, mappings_file_path, self._logical_view_claims, theta,
                                     keyword_weight, link_weight, text_weight, entity_weight, seed=seed, samples=samples)

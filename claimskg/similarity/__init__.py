@@ -7,6 +7,7 @@ from nltk.corpus import stopwords
 from nltk.util import everygrams
 from redis import StrictRedis
 from scipy.spatial import distance
+import sent2vec
 
 from claimskg.vsm.embeddings import Embeddings
 
@@ -104,4 +105,31 @@ def cached_embedding_text_thematic_similarity(string_a, string_b, embeddings: Em
         if redis is not None:
             Embeddings.cache_vector(key_2, vector_b, redis)
 
-    return 1 - distance.chebyshev(vector_a, vector_b)
+    return 1 - distance.cosine(vector_a, vector_b)
+
+
+def cached_embedding_text_sentence_similarity_sent2vec(string_a, string_b, sent2vec, redis: StrictRedis):
+
+    key_1 = hashlib.md5(string_a.encode('utf-8')).hexdigest()
+    key_2 = hashlib.md5(string_b.encode('utf-8')).hexdigest()
+
+    if redis is not None and redis.exists(key_1):
+        vector_a = Embeddings.load_vector_from_cache(key_1, redis)
+    else:
+        vector_a = sent2vec.embed_sentence(string_a)
+        if redis is not None:
+            Embeddings.cache_vector(key_1, vector_a, redis)
+
+    if redis is not None and redis.exists(key_2):
+        vector_b = Embeddings.load_vector_from_cache(key_2, redis)
+    else:
+        vector_b = sent2vec.embed_sentence(string_b)
+        if redis is not None:
+            Embeddings.cache_vector(key_2, vector_b, redis)
+
+    try:
+        value = 1 - distance.cosine(vector_a, vector_b)
+    except ValueError:
+        value = 0
+
+    return value

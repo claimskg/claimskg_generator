@@ -7,7 +7,7 @@ from nltk.corpus import stopwords
 from tqdm import tqdm
 
 from claimskg import similarity as sim
-from claimskg.similarity import cached_embedding_text_thematic_similarity
+from claimskg.similarity import cached_embedding_text_sentence_similarity_sent2vec
 from claimskg.vsm.embeddings import Embeddings
 
 _stop_words = set(stopwords.words('english'))
@@ -99,8 +99,10 @@ class FactReconciler:
         if self.samples is not None:
             result = _process_pairwise_sample(self.samples, self.claims, self.seed, self._evaluate_mapping)
         else:
+            count = len(self.claims)
+            total = int(count * (count - 1) / 2)
             result = [self._evaluate_mapping((self.claims[pair[0]], self.claims[pair[1]])) for pair in
-                      tqdm(itertools.combinations(range(len(self.claims)), 2))]
+                      tqdm(itertools.combinations(range(len(self.claims)), 2), total=total)]
 
         print(len(result))
         mappings = [x for x in result if x is not None]
@@ -145,9 +147,13 @@ class FactReconciler:
     def _pruning_criterion(claim_a, claim_b):
         prune = False
         author_score = FactReconciler.author_match(claim_a, claim_b)
-        entity_score = sim.compute_hard_overlap(claim_a.entities, claim_b.entities)
-        num_entities_a = len(claim_a.entities)
-        num_entities_b = len(claim_b.entities)
+
+        entities_a = claim_a.claim_entities + claim_a.review_entities
+        entities_b = claim_b.claim_entities + claim_b.review_entities
+
+        entity_score = sim.compute_hard_overlap(entities_a, entities_b)
+        num_entities_a = len(entities_a)
+        num_entities_b = len(entities_b)
 
         # Date criterion
         if claim_a.claim_date is not None and claim_b.claim_date is not None \
@@ -186,18 +192,21 @@ class FactReconciler:
         return score, result
 
     def _claim_similarity(self, claim_a, claim_b):
+        entities_a = claim_a.claim_entities + claim_a.review_entities
+        entities_b = claim_b.claim_entities + claim_b.review_entities
         if len(claim_a.keywords) == 0 and len(claim_b.keywords) == 0:
             keyword_similarity = None
         else:
             keyword_similarity = sim.jaccard(claim_a.keywords, claim_b.keywords)
 
         link_similarity = sim.jaccard(claim_a.links, claim_b.links)
-        if len(claim_a.entities) == 0 and len(claim_b.entities) == 0:
-            entity_similarity = sim.jaccard(claim_a.entities, claim_b.entities)
-        else:
-            entity_similarity = None
 
-        text_similarity = cached_embedding_text_thematic_similarity(
+        if len(entities_a) == 0 and len(entities_b) == 0:
+            entity_similarity = None
+        else:
+            entity_similarity = sim.jaccard(entities_a, entities_b)
+
+        text_similarity = cached_embedding_text_sentence_similarity_sent2vec(
             _merge_and_normalise_strings(claim_a.text_fragments).lower(),
             _merge_and_normalise_strings(claim_b.text_fragments).lower(),
             self._embeddings, self._redis)

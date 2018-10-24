@@ -7,8 +7,7 @@ from SPARQLWrapper import SPARQLWrapper
 from ruamel import yaml
 
 from claimskg.generator import ClaimsKGGenerator
-from claimskg.vsm.embeddings import Embeddings
-
+import sent2vec
 
 def usage():
     f = open('exporter_help_text.txt', 'r')
@@ -89,7 +88,9 @@ if __name__ == '__main__':
     theta = options['reconcile']
     embeddings = None
     if theta > 0:
-        embeddings = Embeddings.load_from_file_lazy(options['embeddings-path'])
+        # embeddings = Embeddings.load_from_file_lazy(options['embeddings-path'])
+        embeddings = sent2vec.Sent2vecModel()
+        embeddings.load_model(options['embeddings-path'])
 
     generator = ClaimsKGGenerator(model_uri=options['model-uri'],
                                   sparql_wrapper=sparql_wrapper, include_body=options['include-body'],
@@ -103,8 +104,8 @@ if __name__ == '__main__':
     if theta > 0:
         print()
         print("Reconciling claims...")
-        generator.reconcile_claims(embeddings, theta=theta, keyword_weight=0.2, link_weight=0.1, text_weight=0.5,
-                                   entity_weight=0.2, mappings_file_path=options['mappings-file'],
+        generator.reconcile_claims(embeddings, theta=theta, keyword_weight=1, link_weight=1, text_weight=1,
+                                   entity_weight=1, mappings_file_path=options['mappings-file'],
                                    samples=options['sample'], seed=options['seed'])
 
     print()
