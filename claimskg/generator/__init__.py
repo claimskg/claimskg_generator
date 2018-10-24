@@ -337,15 +337,18 @@ class ClaimsKGGenerator:
         else:
             escaped_alternate_rating_name = html.escape(row['rating_alternateName']).encode('ascii',
                                                                                             'xmlcharrefreplace')
-
+        rating_value = int(row['rating_ratingValue'])
         original_rating = self._uri_generator.create_original_rating_uri(row)
         self._graph.add((original_rating, RDF.type, self._schema_rating_class_uri))
         self._graph.add(
             (original_rating, self._schema_alternate_name_property_uri,
              Literal(escaped_alternate_rating_name)))
-        self._graph.add(
-            (original_rating, self._schema_rating_value_property_uri,
-             Literal(int(row['rating_ratingValue']), datatype=XSD.integer)))
+
+        if rating_value >= 0:
+            self._graph.add(
+                (original_rating, self._schema_rating_value_property_uri,
+                 Literal(rating_value, datatype=XSD.integer)))
+
         organization = self._uri_generator.organization_uri(row)
         self._graph.add((original_rating, self._schema_author_property_uri, organization))
 
@@ -367,140 +370,146 @@ class ClaimsKGGenerator:
 
         return original_rating, normalized_rating
 
-    def _create_mention(self, mention_entry, claim: ClaimLogicalView, in_review):
-        rho_value = float(mention_entry['linkProbability'])
-        if rho_value > self._threshold:
 
-            text = mention_entry['mention']
-            start = mention_entry['start']
-            end = mention_entry['end']
-            entity_uri = self.resolve_entity_identifier(mention_entry['entity'])
+def _create_mention(self, mention_entry, claim: ClaimLogicalView, in_review):
+    rho_value = float(mention_entry['linkProbability'])
+    if rho_value > self._threshold:
 
-            mention = self._uri_generator.mention_uri(start, end, text, entity_uri, rho_value,
-                                                      ",".join(claim.text_fragments))
+        text = mention_entry['mention']
+        start = mention_entry['start']
+        end = mention_entry['end']
+        entity_uri = self.resolve_entity_identifier(mention_entry['entity'])
 
-            self._graph.add((mention, RDF.type, self._nif_context_class_uri))
-            self._graph.add((mention, RDF.type, self._nif_RFC5147String_class_uri))
+        mention = self._uri_generator.mention_uri(start, end, text, entity_uri, rho_value,
+                                                  ",".join(claim.text_fragments))
 
-            self._graph.add((mention, self._nif_is_string_property_uri,
-                             Literal(text, lang=self._iso1_language_tag)))
-            self._graph.add((mention, self._nif_begin_index_property_uri, Literal(int(start), datatype=XSD.integer)))
-            self._graph.add((mention, self._nif_end_index_property_uri, Literal(int(end), datatype=XSD.integer)))
+        self._graph.add((mention, RDF.type, self._nif_context_class_uri))
+        self._graph.add((mention, RDF.type, self._nif_RFC5147String_class_uri))
 
-            # TODO: Fix values so that they aren't displayed in scientific notation
-            self._graph.add(
-                (mention, self.its_ta_confidence_property_uri,
-                 Literal(float(self._format_confidence_score(mention_entry)), datatype=XSD.float)))
+        self._graph.add((mention, self._nif_is_string_property_uri,
+                         Literal(text, lang=self._iso1_language_tag)))
+        self._graph.add((mention, self._nif_begin_index_property_uri, Literal(int(start), datatype=XSD.integer)))
+        self._graph.add((mention, self._nif_end_index_property_uri, Literal(int(end), datatype=XSD.integer)))
 
-            self._graph.add((mention, self.its_ta_ident_ref_property_uri, URIRef(entity_uri)))
-            if in_review:
-                claim.review_entities.append(entity_uri)
-            else:
-                claim.claim_entities.append(entity_uri)
+        # TODO: Fix values so that they aren't displayed in scientific notation
+        self._graph.add(
+            (mention, self.its_ta_confidence_property_uri,
+             Literal(float(self._format_confidence_score(mention_entry)), datatype=XSD.float)))
 
-            return mention
+        self._graph.add((mention, self.its_ta_ident_ref_property_uri, URIRef(entity_uri)))
+        if in_review:
+            claim.review_entities.append(entity_uri)
         else:
-            return None
+            claim.claim_entities.append(entity_uri)
 
-    def resolve_entity_identifier(self, identifier):
-        if self._sparql_wrapper is not None and self._resolve:
-            fetcher = SparQLOffsetFetcher(self._sparql_wrapper, 10000, """            
+        return mention
+    else:
+        return None
+
+
+def resolve_entity_identifier(self, identifier):
+    if self._sparql_wrapper is not None and self._resolve:
+        fetcher = SparQLOffsetFetcher(self._sparql_wrapper, 10000, """            
                         ?concept dbo:wikiPageID {id}.
                         """.format(id=identifier),
-                                          "?concept")
-            result = fetcher.fetch_all()
-            if len(result) > 0:
-                uri = result[0]['concept']['value']
-            else:
-                uri = "tagme://" + str(identifier)
+                                      "?concept")
+        result = fetcher.fetch_all()
+        if len(result) > 0:
+            uri = result[0]['concept']['value']
         else:
             uri = "tagme://" + str(identifier)
+    else:
+        uri = "tagme://" + str(identifier)
 
-        return uri
+    return uri
 
-    @staticmethod
-    def _format_confidence_score(mention_entry):
-        value = float(mention_entry['linkProbability'])
-        rounded_to_two_decimals = round(value, 2)
-        return str(rounded_to_two_decimals)
 
-    def generate_model(self, pandas_dataframe):
-        row_counter = 0
+@staticmethod
+def _format_confidence_score(mention_entry):
+    value = float(mention_entry['linkProbability'])
+    rounded_to_two_decimals = round(value, 2)
+    return str(rounded_to_two_decimals)
 
-        self._graph.namespace_manager = self._namespace_manager
-        total_entry_count = len(pandas_dataframe)
-        one_per_cent = int(total_entry_count * 0.01)
-        self.global_statistics = ClaimsKGStatistics()
-        self.per_source_statistics = {}
 
-        progress_bar = tqdm(total=len(pandas_dataframe))
+def generate_model(self, pandas_dataframe):
+    row_counter = 0
 
-        for index, row in pandas_dataframe.iterrows():
-            row_counter += 1
+    self._graph.namespace_manager = self._namespace_manager
+    total_entry_count = len(pandas_dataframe)
+    one_per_cent = int(total_entry_count * 0.01)
+    self.global_statistics = ClaimsKGStatistics()
+    self.per_source_statistics = {}
 
-            if row_counter % one_per_cent == 0:
-                progress_bar.update(one_per_cent)
+    progress_bar = tqdm(total=len(pandas_dataframe))
 
-            logical_claim = ClaimLogicalView()  # Instance holding claim raw information for mapping generation
-            source_site = _row_string_value(row, 'claimReview_author_name')
-            if source_site not in self.per_source_statistics.keys():
-                self.per_source_statistics[source_site] = ClaimsKGStatistics()
+    for index, row in pandas_dataframe.iterrows():
+        row_counter += 1
 
-            claim_review_instance = self._create_schema_claim_review(row, logical_claim)
+        if row_counter % one_per_cent == 0:
+            progress_bar.update(one_per_cent)
 
-            organization = self._create_organization(row, logical_claim)
-            self._graph.add((claim_review_instance, self._schema_author_property_uri, organization))
+        logical_claim = ClaimLogicalView()  # Instance holding claim raw information for mapping generation
+        source_site = _row_string_value(row, 'claimReview_author_name')
+        if source_site not in self.per_source_statistics.keys():
+            self.per_source_statistics[source_site] = ClaimsKGStatistics()
 
-            creative_work = self._create_creative_work(row, logical_claim)
-            self._graph.add((claim_review_instance, self._schema_item_reviewed_property_uri, creative_work))
-            logical_claim.creative_work_uri = creative_work
+        claim_review_instance = self._create_schema_claim_review(row, logical_claim)
 
-            original, normalized = self._create_review_rating(row)
-            self._graph.add((claim_review_instance, rdflib.term.URIRef(self._schema_prefix['reviewRating']), original))
-            self._graph.add(
-                (claim_review_instance, rdflib.term.URIRef(self._schema_prefix['reviewRating']), normalized))
+        organization = self._create_organization(row, logical_claim)
+        self._graph.add((claim_review_instance, self._schema_author_property_uri, organization))
 
-            # For claim review mentions
-            if json.loads(row[u'extra_entities_claimReview_claimReviewed']):
-                for mention_entry in json.loads(row[u'extra_entities_claimReview_claimReviewed']):
-                    mention = self._create_mention(mention_entry, logical_claim, True)
-                    if mention:
-                        self._graph.add((creative_work, self._schema_mentions_property_uri, mention))
+        creative_work = self._create_creative_work(row, logical_claim)
+        self._graph.add((claim_review_instance, self._schema_item_reviewed_property_uri, creative_work))
+        logical_claim.creative_work_uri = creative_work
 
-            # For Creative Work mentions
-            if json.loads(row[u'extra_entities_body']):
-                for mention_entry in json.loads(row[u'extra_entities_body']):
-                    mention = self._create_mention(mention_entry, logical_claim, False)
-                    if mention:
-                        self._graph.add((claim_review_instance, self._schema_mentions_property_uri, mention))
+        original, normalized = self._create_review_rating(row)
+        self._graph.add((claim_review_instance, rdflib.term.URIRef(self._schema_prefix['reviewRating']), original))
+        self._graph.add(
+            (claim_review_instance, rdflib.term.URIRef(self._schema_prefix['reviewRating']), normalized))
 
-            self._logical_view_claims.append(logical_claim)
-            self.global_statistics.compute_stats_for_review(logical_claim)
-            self.per_source_statistics[source_site].compute_stats_for_review(logical_claim)
+        # For claim review mentions
+        if json.loads(row[u'extra_entities_claimReview_claimReviewed']):
+            for mention_entry in json.loads(row[u'extra_entities_claimReview_claimReviewed']):
+                mention = self._create_mention(mention_entry, logical_claim, True)
+                if mention:
+                    self._graph.add((creative_work, self._schema_mentions_property_uri, mention))
 
-        progress_bar.close()
+        # For Creative Work mentions
+        if json.loads(row[u'extra_entities_body']):
+            for mention_entry in json.loads(row[u'extra_entities_body']):
+                mention = self._create_mention(mention_entry, logical_claim, False)
+                if mention:
+                    self._graph.add((claim_review_instance, self._schema_mentions_property_uri, mention))
 
-    def export_rdf(self, format):
-        graph_serialization = self._graph.serialize(format=format, encoding='utf-8')
-        print("\nGlobal dataset statistics")
-        self.global_statistics.output_stats()
+        self._logical_view_claims.append(logical_claim)
+        self.global_statistics.compute_stats_for_review(logical_claim)
+        self.per_source_statistics[source_site].compute_stats_for_review(logical_claim)
 
-        print("\nPer source site statistics")
+    progress_bar.close()
 
-        for site in self.per_source_statistics.keys():
-            print("\n\n{site} statistics...".format(site=site))
-            self.per_source_statistics[site].output_stats()
-        return graph_serialization
 
-    def reconcile_claims(self, embeddings, theta, keyword_weight,
-                         link_weight, text_weight, entity_weight, mappings_file_path=None, seed=None, samples=None):
-        reconciler = FactReconciler(embeddings, self._use_caching, mappings_file_path, self._logical_view_claims, theta,
-                                    keyword_weight, link_weight, text_weight, entity_weight, seed=seed, samples=samples)
-        mappings = reconciler.generate_mappings()
+def export_rdf(self, format):
+    graph_serialization = self._graph.serialize(format=format, encoding='utf-8')
+    print("\nGlobal dataset statistics")
+    self.global_statistics.output_stats()
 
-        for mapping in mappings:
-            if mapping is not None and mapping[1] is not None and mapping[1] != (None, None):
-                source = mapping[1][0]
-                target = mapping[1][1]
-                self.global_statistics.count_mapping()
-                self._graph.add((source.creative_work_uri, OWL.sameAs, target.creative_work_uri))
+    print("\nPer source site statistics")
+
+    for site in self.per_source_statistics.keys():
+        print("\n\n{site} statistics...".format(site=site))
+        self.per_source_statistics[site].output_stats()
+    return graph_serialization
+
+
+def reconcile_claims(self, embeddings, theta, keyword_weight,
+                     link_weight, text_weight, entity_weight, mappings_file_path=None, seed=None, samples=None):
+    reconciler = FactReconciler(embeddings, self._use_caching, mappings_file_path, self._logical_view_claims, theta,
+                                keyword_weight, link_weight, text_weight, entity_weight, seed=seed, samples=samples)
+    mappings = reconciler.generate_mappings()
+
+    for mapping in mappings:
+        if mapping is not None and mapping[1] is not None and mapping[1] != (None, None):
+            source = mapping[1][0]
+            target = mapping[1][1]
+            self.global_statistics.count_mapping()
+            self._graph.add((source.creative_work_uri, OWL.sameAs, target.creative_work_uri))

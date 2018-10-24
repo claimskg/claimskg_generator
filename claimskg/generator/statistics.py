@@ -2,11 +2,6 @@ from enum import Enum, auto
 from typing import Dict
 
 
-class StatType(Enum):
-    COUNT = auto()
-    AVERAGE = auto()
-
-
 class StatKeys(Enum):
     CLAIM_REVIEW = "ClaimReview"
     CREATIVE_WORK = "CreativeWork"
