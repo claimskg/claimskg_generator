@@ -1,4 +1,4 @@
-from enum import Enum, auto
+from enum import Enum
 from typing import Dict
 
 
@@ -70,7 +70,6 @@ class ClaimsKGStatistics:
             self._increment_statistic(StatKeys.REVIEW_WITH_KEYWORDS_PERCENT, 1)
         if len(claim.review_entities) > 0:
             self._increment_statistic(StatKeys.REVIEW_WITH_ENTITIES, 1)
-
 
     def count_mapping(self):
         self._increment_statistic(StatKeys.CLAIM_MAPPINGS, 1)
