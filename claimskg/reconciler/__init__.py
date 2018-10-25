@@ -130,15 +130,17 @@ class FactReconciler:
 
     @staticmethod
     def _generate_claim_mapping_string_description(score, claim_a, claim_b):
+        entities_a = claim_a.claim_entities + claim_a.review_entities
+        entities_b = claim_b.claim_entities + claim_b.review_entities
         return "{score},\"{cwa_a}\",\"{cwa_b}\",\"{cra_a}\",\"{cra_b}\",\"{tf_a}\",\"{tf_b}\",\"{ent_a}\",\"{ent_b}\"," \
                "\"{kw_a}\",\"{kw_b}\",\"{cit_a}\",\"{cit_b}\", \"{uri_a}\",\"{uri_b}\",\n" \
             .format(
             # Claim A fields
-            uri_a=claim_a.creative_work_uri, ent_a=",".join(claim_a.entities), kw_a=",".join(claim_a.keywords),
+            uri_a=claim_a.creative_work_uri, ent_a=",".join(entities_a), kw_a=",".join(claim_a.keywords),
             cit_a=",".join(claim_a.links), cwa_a=claim_a.creative_work_author, cra_a=claim_a.claimreview_author,
             tf_a=claim_a.text_fragments[0].replace("\"", "''"),
             # Claim B fields
-            uri_b=claim_b.creative_work_uri, ent_b=",".join(claim_b.entities), kw_b=",".join(claim_b.keywords),
+            uri_b=claim_b.creative_work_uri, ent_b=",".join(entities_b), kw_b=",".join(claim_b.keywords),
             cit_b=",".join(claim_b.links), cwa_b=claim_b.creative_work_author, cra_b=claim_b.claimreview_author,
             tf_b=claim_b.text_fragments[0].replace("\"", "''"),
             score=score)
