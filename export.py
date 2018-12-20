@@ -1,13 +1,13 @@
+import csv
 import getopt
-import re
+import sent2vec
 import sys
 
-import pandas
 from SPARQLWrapper import SPARQLWrapper
 from ruamel import yaml
 
 from claimskg.generator import ClaimsKGGenerator
-import sent2vec
+
 
 def usage():
     f = open('exporter_help_text.txt', 'r')
@@ -34,7 +34,7 @@ if __name__ == '__main__':
 
     # Overriding hard-coded defaults with values from configuration file
     for (key, value) in configuration_dict.items():
-            options[key] = value
+        options[key] = value
 
     try:
         opts, args = getopt.getopt(argv, "",
@@ -83,8 +83,14 @@ if __name__ == '__main__':
 
     print()
     print("Loading data...")
-    pandas_frame = pandas.read_csv(options['input'])
+    csv.field_size_limit(sys.maxsize)
+    # pandas_frame = pandas.read_csv(options['input'], sep=',', skipinitialspace=True, quotechar='"', escapechar='"', engine="python",encoding="utf-8")
 
+    dataset_rows = []
+    with open(options['input']) as csv_file:
+        csv_reader = csv.DictReader(csv_file, delimiter=',', quotechar='"',dialect=csv.unix_dialect)
+        for row in csv_reader:
+            dataset_rows.append(row)
     theta = options['reconcile']
     embeddings = None
     if theta > 0:
@@ -99,7 +105,7 @@ if __name__ == '__main__':
 
     print()
     print("Generating model from CSV data...")
-    generator.generate_model(pandas_frame)
+    generator.generate_model(dataset_rows)
 
     if theta > 0:
         print()
