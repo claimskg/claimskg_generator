@@ -303,7 +303,7 @@ class ClaimsKGGenerator:
                             author_url]:
                     claim.links.append(link)
                     # try:
-                    parsed_url = urlparse(link.strip().replace("\\",""))
+                    parsed_url = urlparse(link.strip().replace("\\", ""))
                     self._graph.add(
                         (creative_work, self._schema_citation_preperty_uri,
                          URIRef(
@@ -389,7 +389,9 @@ class ClaimsKGGenerator:
             start = mention_entry['begin']
             end = mention_entry['end']
             entity_uri = mention_entry['entity'].replace(" ", "_")
-            categories = mention_entry['categories'][0].split(",")
+            categories = mention_entry['categories']
+            if len(categories) > 0:
+                categories = categories[0].split(",")
 
             mention = self._uri_generator.mention_uri(start, end, text, entity_uri, rho_value,
                                                       ",".join(claim.text_fragments))
