@@ -218,7 +218,7 @@ class FactReconciler:
 
         if not entity_similarity and category_similarity:
             entity_similarity = category_similarity * 0.3
-        elif entity_similarity:
+        elif entity_similarity and category_similarity:
             entity_similarity = entity_similarity * 0.7 + category_similarity + 0.3
 
         text_similarity = cached_embedding_text_sentence_similarity_sent2vec(
