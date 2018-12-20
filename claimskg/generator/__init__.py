@@ -389,7 +389,7 @@ class ClaimsKGGenerator:
             start = mention_entry['begin']
             end = mention_entry['end']
             entity_uri = mention_entry['entity'].replace(" ", "_")
-            categories = mention_entry['categories']
+            categories = mention_entry['categories'][0].split(",")
 
             mention = self._uri_generator.mention_uri(start, end, text, entity_uri, rho_value,
                                                       ",".join(claim.text_fragments))
@@ -410,10 +410,11 @@ class ClaimsKGGenerator:
             self._graph.add((mention, self.its_ta_ident_ref_property_uri, self._dbo_prefix[entity_uri]))
             if in_review:
                 claim.review_entities.append(entity_uri)
-                claim.review_entity_categories.append(categories)
+                claim.review_entity_categories = categories
             else:
                 claim.claim_entities.append(entity_uri)
-                claim.claim_entity_categories.append(categories)
+
+                claim.claim_entity_categories = categories
 
             return mention
         else:

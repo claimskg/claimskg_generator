@@ -196,6 +196,9 @@ class FactReconciler:
     def _claim_similarity(self, claim_a, claim_b):
         entities_a = claim_a.claim_entities + claim_a.review_entities
         entities_b = claim_b.claim_entities + claim_b.review_entities
+        categories_a = claim_a.review_entity_categories + claim_a.claim_entity_categories
+        categories_b = claim_b.review_entity_categories + claim_b.claim_entity_categories
+
         if len(claim_a.keywords) == 0 and len(claim_b.keywords) == 0:
             keyword_similarity = None
         else:
@@ -207,6 +210,16 @@ class FactReconciler:
             entity_similarity = None
         else:
             entity_similarity = sim.jaccard(entities_a, entities_b)
+
+        if len(categories_a) == 0 and len(categories_b) == 0:
+            category_similarity = None
+        else:
+            category_similarity = sim.jaccard(categories_a, categories_b)
+
+        if not entity_similarity and category_similarity:
+            entity_similarity = category_similarity * 0.3
+        elif entity_similarity:
+            entity_similarity = entity_similarity * 0.7 + category_similarity + 0.3
 
         text_similarity = cached_embedding_text_sentence_similarity_sent2vec(
             _merge_and_normalise_strings(claim_a.text_fragments).lower(),
