@@ -88,12 +88,13 @@ if __name__ == '__main__':
 
     dataset_rows = []
     with open(options['input']) as csv_file:
-        csv_reader = csv.DictReader(csv_file, delimiter=',', quotechar='"',dialect=csv.unix_dialect)
+        csv_reader = csv.DictReader(csv_file, delimiter=',', quotechar='"', dialect=csv.unix_dialect)
         for row in csv_reader:
             dataset_rows.append(row)
     theta = options['reconcile']
     embeddings = None
     if theta > 0:
+        print("Loading Sen2Vec embeddings...")
         # embeddings = Embeddings.load_from_file_lazy(options['embeddings-path'])
         embeddings = sent2vec.Sent2vecModel()
         embeddings.load_model(options['embeddings-path'])
