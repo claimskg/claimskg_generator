@@ -7,7 +7,6 @@ from nltk.corpus import stopwords
 from tqdm import tqdm
 
 from claimskg import similarity as sim
-from claimskg.similarity import cached_embedding_text_sentence_similarity_sent2vec
 from claimskg.vsm.embeddings import Embeddings
 
 _stop_words = set(stopwords.words('english'))
@@ -66,6 +65,8 @@ class FactReconciler:
             self.output_file = open(mappings_file_path, "w")
         else:
             self.output_file = None
+
+        self._processed_set = set()
 
         self.claims = claims
 
@@ -185,8 +186,12 @@ class FactReconciler:
         score = None
         claim_a = pair[0]
         claim_b = pair[1]
-        if claim_a != claim_b and not FactReconciler._pruning_criterion(claim_a, claim_b):
+        key = claim_a.creative_work_uri + claim_b.creative_work_uri
+
+        if key not in self._processed_set and claim_a != claim_b \
+                and not FactReconciler._pruning_criterion(claim_a, claim_b):
             score = self._claim_similarity(claim_a, claim_b)
+            self._processed_set.add(key)
 
             if score > self.theta:
                 result = pair
@@ -221,10 +226,9 @@ class FactReconciler:
         elif entity_similarity and category_similarity:
             entity_similarity = entity_similarity * 0.7 + category_similarity + 0.3
 
-        text_similarity = cached_embedding_text_sentence_similarity_sent2vec(
-            _merge_and_normalise_strings(claim_a.text_fragments).lower(),
-            _merge_and_normalise_strings(claim_b.text_fragments).lower(),
-            self._embeddings, self._redis)
+        text_similarity = self._embeddings.sentence_similarity(
+            _merge_and_normalise_strings(claim_a.text_fragments),
+            _merge_and_normalise_strings(claim_b.text_fragments[0:1]))
 
         score = sim.geometric_mean_aggregation([
             (entity_similarity, self.entity_weight),

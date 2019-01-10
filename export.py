@@ -1,12 +1,12 @@
 import csv
 import getopt
-import sent2vec
 import sys
 
 from SPARQLWrapper import SPARQLWrapper
 from ruamel import yaml
 
 from claimskg.generator import ClaimsKGGenerator
+from claimskg.vsm.embeddings import MagnitudeEmbeddings
 
 
 def usage():
@@ -94,10 +94,8 @@ if __name__ == '__main__':
     theta = options['reconcile']
     embeddings = None
     if theta > 0:
-        print("Loading Sen2Vec embeddings...")
-        # embeddings = Embeddings.load_from_file_lazy(options['embeddings-path'])
-        embeddings = sent2vec.Sent2vecModel()
-        embeddings.load_model(options['embeddings-path'])
+        print("Loading embeddings...")
+        embeddings = MagnitudeEmbeddings(options['embeddings-path'])
 
     generator = ClaimsKGGenerator(model_uri=options['model-uri'],
                                   sparql_wrapper=sparql_wrapper, include_body=options['include-body'],
