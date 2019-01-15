@@ -59,6 +59,7 @@ class ClaimLogicalView:
         self.claimreview_author = ""
         self.creative_work_author = ""
         self.creative_work_uri = None
+        self.claim_review_url = None
         self.claim_date = None
         self.review_date = None
         self.has_body_text = False
@@ -234,6 +235,7 @@ class ClaimsKGGenerator:
                                  Literal(body_value, lang=self._iso1_language_tag)))
 
         claim_review_url = row['claimReview_url']
+        claim.claim_review_url = claim_review_url
 
         if claim_review_url is not None:
             self._graph.add(

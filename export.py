@@ -6,7 +6,7 @@ from SPARQLWrapper import SPARQLWrapper
 from ruamel import yaml
 
 from claimskg.generator import ClaimsKGGenerator
-from claimskg.vsm.embeddings import MagnitudeEmbeddings
+from claimskg.vsm.embeddings import MagnitudeEmbeddings, Sent2VecEmbeddings
 
 
 def usage():
@@ -95,7 +95,8 @@ if __name__ == '__main__':
     embeddings = None
     if theta > 0:
         print("Loading embeddings...")
-        embeddings = MagnitudeEmbeddings(options['embeddings-path'])
+        # embeddings = MagnitudeEmbeddings(options['embeddings-path'])
+        embeddings = Sent2VecEmbeddings(options['embeddings-path'])
 
     generator = ClaimsKGGenerator(model_uri=options['model-uri'],
                                   sparql_wrapper=sparql_wrapper, include_body=options['include-body'],

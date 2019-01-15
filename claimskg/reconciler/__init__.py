@@ -125,7 +125,7 @@ class FactReconciler:
 
     @staticmethod
     def _generate_claim_mapping_output_header():
-        return "\"Score\", \"CW Author A\",\"CW Author B\",\"CR Author A\",\"CR Author B\",\"Text Fragments A\"," \
+        return "\"Score\", \"CR Author A\",\"CR Author B\", Review URL A, Review URL B,\"Text Fragments A\"," \
                "\"Text Fragments B\",\"Entities A\",\"Entities B\",\"Keywords A\",\"Keywords B\",\"Citations A\"," \
                "\"Citations B\",\"URI A\",\"URI B\"\n"
 
@@ -133,16 +133,16 @@ class FactReconciler:
     def _generate_claim_mapping_string_description(score, claim_a, claim_b):
         entities_a = claim_a.claim_entities + claim_a.review_entities
         entities_b = claim_b.claim_entities + claim_b.review_entities
-        return "{score},\"{cwa_a}\",\"{cwa_b}\",\"{cra_a}\",\"{cra_b}\",\"{tf_a}\",\"{tf_b}\",\"{ent_a}\",\"{ent_b}\"," \
+        return "{score},\"{cra_a}\",\"{cra_b}\",\"{ruri_a}\",\"{rurib_b}\",\"{tf_a}\",\"{tf_b}\",\"{ent_a}\",\"{ent_b}\"," \
                "\"{kw_a}\",\"{kw_b}\",\"{cit_a}\",\"{cit_b}\", \"{uri_a}\",\"{uri_b}\",\n" \
             .format(
             # Claim A fields
             uri_a=claim_a.creative_work_uri, ent_a=",".join(entities_a), kw_a=",".join(claim_a.keywords),
-            cit_a=",".join(claim_a.links), cwa_a=claim_a.creative_work_author, cra_a=claim_a.claimreview_author,
+            cit_a=",".join(claim_a.links), ruri_a=claim_a.claim_review_url, cra_a=claim_a.claimreview_author,
             tf_a=claim_a.text_fragments[0].replace("\"", "''"),
             # Claim B fields
             uri_b=claim_b.creative_work_uri, ent_b=",".join(entities_b), kw_b=",".join(claim_b.keywords),
-            cit_b=",".join(claim_b.links), cwa_b=claim_b.creative_work_author, cra_b=claim_b.claimreview_author,
+            cit_b=",".join(claim_b.links), rurib_b=claim_b.claim_review_url, cra_b=claim_b.claimreview_author,
             tf_b=claim_b.text_fragments[0].replace("\"", "''"),
             score=score)
 
@@ -226,9 +226,12 @@ class FactReconciler:
         elif entity_similarity and category_similarity:
             entity_similarity = entity_similarity * 0.7 + category_similarity + 0.3
 
-        text_similarity = self._embeddings.sentence_similarity(
-            _merge_and_normalise_strings(claim_a.text_fragments),
-            _merge_and_normalise_strings(claim_b.text_fragments[0:1]))
+        if self._embeddings:
+            text_similarity = self._embeddings.sentence_similarity(
+                _merge_and_normalise_strings(claim_a.text_fragments),
+                _merge_and_normalise_strings(claim_b.text_fragments[0:1]))
+        else:
+            text_similarity = None
 
         score = sim.geometric_mean_aggregation([
             (entity_similarity, self.entity_weight),
