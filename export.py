@@ -5,8 +5,9 @@ import sys
 from SPARQLWrapper import SPARQLWrapper
 from ruamel import yaml
 
+import claimskg
 from claimskg.generator import ClaimsKGGenerator
-from claimskg.vsm.embeddings import MagnitudeEmbeddings, Sent2VecEmbeddings
+from claimskg.vsm.embeddings import MagnitudeEmbeddings
 
 
 def usage():
@@ -30,7 +31,8 @@ if __name__ == '__main__':
     configuration_dict = config_dict = yaml.load(open("configuration.yaml", "r"), Loader=yaml.Loader)
     options = {'output': "output.ttl", 'format': "turtle", 'resolve': True, 'threshold': 0.3,
                'model-uri': "http://data.gesis.org/claimskg/", 'include-body': False, 'reconcile': -1.0,
-               'caching': False, 'seed': None, 'sample': None, 'mappings-file': "./mappings.csv"}
+               'caching': False, 'seed': None, 'sample': None, 'mappings-file': "./mappings.csv",
+               'embeddings-type': "MagnitudeEmbeddings", 'embeddings-path': None}
 
     # Overriding hard-coded defaults with values from configuration file
     for (key, value) in configuration_dict.items():
@@ -93,10 +95,12 @@ if __name__ == '__main__':
             dataset_rows.append(row)
     theta = options['reconcile']
     embeddings = None
-    if theta > 0:
+    if theta > 0 and options['embeddings-path']:
         print("Loading embeddings...")
+        class_name = options['embeddings-type']
+        embeddings_class = getattr(claimskg.vsm.embeddings, class_name)
         # embeddings = MagnitudeEmbeddings(options['embeddings-path'])
-        embeddings = Sent2VecEmbeddings(options['embeddings-path'])
+        embeddings = embeddings_class(options['embeddings-path'])
 
     generator = ClaimsKGGenerator(model_uri=options['model-uri'],
                                   sparql_wrapper=sparql_wrapper, include_body=options['include-body'],
