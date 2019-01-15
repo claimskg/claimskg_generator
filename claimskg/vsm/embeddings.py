@@ -1,5 +1,6 @@
 import hashlib
 from abc import ABC, abstractmethod
+from sent2vec import Sent2vecModel
 from typing import List
 
 import numpy
@@ -281,14 +282,14 @@ class MagnitudeEmbeddings(Embeddings):
 class Sent2VecEmbeddings(Embeddings):
     def __init__(self, embeddings_file):
         super(Embeddings, self).__init__()
-        self.model = sent2vec.Sent2vecModel()
+        self.model = Sent2vecModel()
         self.model.load_model(embeddings_file)
 
     def word_vector(self, word: str) -> ndarray:
-        return self.model.get_word_vector(word)
+        return self.model.embed_sentence(word)
 
     def dim(self):
-        return self.model.get_dimension()
+        return self.model.get_emb_size()
 
     def sentence_vector(self, sentence: str, sample=None) -> ndarray:
         return self.model.embed_sentence(sentence)
