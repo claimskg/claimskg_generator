@@ -30,10 +30,10 @@ To install the dependencies you may use: `pip3 install -r requirements.txt`
   - E*: Same claim but different claimee
   - ST: Same topic, meaning that two claims are about the same occurence or event
   
- The first columnt contains the type of match, the second column, the URI of the first claim, the third column, the URI of the second claim. 
+  The first columnt contains the type of match, the second column, the URI of the first claim, the third column, the URI of the second claim. 
  
- The gold file can be downloaded here:
- https://drive.google.com/open?id=1evf67t_p0LqF5ZvNiL-geDCrEBlppZVF
+  The gold file can be downloaded here:
+  https://drive.google.com/open?id=1evf67t_p0LqF5ZvNiL-geDCrEBlppZVF
  
- The URIs correspond to that of the following dataset: 
- http://andon.tchechmedjiev.eu/files/claimskg_20_12_2018.ttl.gz
+  The URIs correspond to that of the following dataset: 
+  http://andon.tchechmedjiev.eu/files/claimskg_20_12_2018.ttl.gz
