@@ -7,7 +7,6 @@ import numpy
 from nltk import TreebankWordTokenizer, everygrams, collections
 from nltk.corpus import stopwords
 from numpy.core.multiarray import ndarray
-from pymagnitude import Magnitude
 from redis import StrictRedis
 from scipy.spatial import distance
 from sklearn.decomposition import SparsePCA
@@ -247,36 +246,38 @@ class DenseEmbeddings(Embeddings):
         return self._dim
 
 
-class MagnitudeEmbeddings(Embeddings):
 
-    def __init__(self, embeddings_file):
-        super(Embeddings, self).__init__()
-        self.model = Magnitude(embeddings_file)
 
-    def word_vector(self, word: str) -> ndarray:
-        return self.model.query(word)
-
-    def sentence_vector(self, sentence: str, sample=False) -> ndarray:
-        tokens = tokenizer.tokenize(sentence)
-        return self.model.query(tokens)
-
-    def dim(self):
-        return self.model.dim()
-
-    def word_similarity(self, word_1: str, word_2: str):
-        return self.model.similarity(word_1, word_2)
-
-    def sentence_similarity(self, string_a, string_b, sample=None):
-        one_grams_a = tokenizer.tokenize(string_a)
-        string_b_tokens = tokenizer.tokenize(string_b)
-
-        if sample:
-            one_grams_a = list(everygrams(one_grams_a, 1, 1))
-            one_grams_a = [word[0] for word, count in collections.Counter(one_grams_a).most_common(sample)]
-
-        pairwise_similarities = self.model.similarity(one_grams_a, string_b_tokens)
-        average_similarity_vector = self.arithmetic_mean_aggregation(pairwise_similarities)
-        return average_similarity_vector.mean()
+# class MagnitudeEmbeddings(Embeddings):
+#
+#     def __init__(self, embeddings_file):
+#         super(Embeddings, self).__init__()
+#         self.model = Magnitude(embeddings_file)
+#
+#     def word_vector(self, word: str) -> ndarray:
+#         return self.model.query(word)
+#
+#     def sentence_vector(self, sentence: str, sample=False) -> ndarray:
+#         tokens = tokenizer.tokenize(sentence)
+#         return self.model.query(tokens)
+#
+#     def dim(self):
+#         return self.model.dim()
+#
+#     def word_similarity(self, word_1: str, word_2: str):
+#         return self.model.similarity(word_1, word_2)
+#
+#     def sentence_similarity(self, string_a, string_b, sample=None):
+#         one_grams_a = tokenizer.tokenize(string_a)
+#         string_b_tokens = tokenizer.tokenize(string_b)
+#
+#         if sample:
+#             one_grams_a = list(everygrams(one_grams_a, 1, 1))
+#             one_grams_a = [word[0] for word, count in collections.Counter(one_grams_a).most_common(sample)]
+#
+#         pairwise_similarities = self.model.similarity(one_grams_a, string_b_tokens)
+#         average_similarity_vector = self.arithmetic_mean_aggregation(pairwise_similarities)
+#         return average_similarity_vector.mean()
 
 
 class Sent2VecEmbeddings(Embeddings):

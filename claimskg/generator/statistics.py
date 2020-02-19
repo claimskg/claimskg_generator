@@ -21,6 +21,10 @@ class StatKeys(Enum):
     REVIEW_WITH_HEADLINE_PERCENT = "Reviews with a headline"
     REVIEW_WITH_KEYWORDS_PERCENT = "Reviews with at least one keyword"
     REVIEW_WITH_ENTITIES = "Reviews with at least one entity mention"
+    FALSE_CLAIMS = "Claims rated as FALSE under our normalized scale"
+    MIXTURE_CLAIMS = "Claims rated as MIXTURE under our normalized scale"
+    TRUE_CLAIMS = "Claims rated as TRUE under our normalized scale"
+    OTHER_CLAIMS = "Claims rated as OTHER under our normalized scale"
 
 
 class ClaimsKGStatistics:
@@ -70,6 +74,15 @@ class ClaimsKGStatistics:
             self._increment_statistic(StatKeys.REVIEW_WITH_KEYWORDS_PERCENT, 1)
         if len(claim.review_entities) > 0:
             self._increment_statistic(StatKeys.REVIEW_WITH_ENTITIES, 1)
+
+        if "TRUE" in claim.normalized_rating:
+            self._increment_statistic(StatKeys.TRUE_CLAIMS, 1)
+        elif "FALSE" in claim.normalized_rating:
+            self._increment_statistic(StatKeys.FALSE_CLAIMS, 1)
+        elif "MIXTURE" in claim.normalized_rating:
+            self._increment_statistic(StatKeys.MIXTURE_CLAIMS, 1)
+        elif "OTHER" in claim.normalized_rating:
+            self._increment_statistic(StatKeys.OTHER_CLAIMS, 1)
 
     def count_mapping(self):
         self._increment_statistic(StatKeys.CLAIM_MAPPINGS, 1)

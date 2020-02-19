@@ -7,7 +7,7 @@ from ruamel import yaml
 
 import claimskg
 from claimskg.generator import ClaimsKGGenerator
-from claimskg.vsm.embeddings import MagnitudeEmbeddings
+# from claimskg.vsm.embeddings import MagnitudeEmbeddings
 
 
 def usage():
@@ -32,7 +32,7 @@ if __name__ == '__main__':
     options = {'output': "output.ttl", 'format': "turtle", 'resolve': True, 'threshold': 0.3,
                'model-uri': "http://data.gesis.org/claimskg/", 'include-body': False, 'reconcile': -1.0,
                'caching': False, 'seed': None, 'sample': None, 'mappings-file': "./mappings.csv",
-               'embeddings-type': "MagnitudeEmbeddings", 'embeddings-path': None}
+               'embeddings-type': "MagnitudeEmbeddings", 'embeddings-path': None, 'align-duplicated': False}
 
     # Overriding hard-coded defaults with values from configuration file
     for (key, value) in configuration_dict.items():
@@ -41,7 +41,8 @@ if __name__ == '__main__':
     try:
         opts, args = getopt.getopt(argv, "",
                                    ("input=", "output=", "format=", "model-uri=", "resolve", "threshold=",
-                                    "include-body", "reconcile=", "caching", "sample=", "seed=", "mappings-file="))
+                                    "include-body", "reconcile=", "caching", "sample=", "seed=", "mappings-file=",
+                                    "align-duplicated"))
 
         for opt, arg in opts:
             if opt == '--input':
@@ -60,6 +61,8 @@ if __name__ == '__main__':
                 options['threshold'] = float(arg)
             elif opt == "--reconcile":
                 options['reconcile'] = float(arg)
+            elif opt == "--align-duplicated":
+                options['align-duplicated'] = True
             elif opt == "--caching":
                 options['caching'] = True
             elif opt == "--sample":
@@ -117,6 +120,10 @@ if __name__ == '__main__':
         generator.reconcile_claims(embeddings, theta=theta, keyword_weight=1, link_weight=1, text_weight=1,
                                    entity_weight=1, mappings_file_path=options['mappings-file'],
                                    samples=options['sample'], seed=options['seed'])
+    if options['align-duplicated']:
+        print()
+        print("Matching exactly identical claims...")
+        generator.align_duplicated()
 
     print()
     print("\nSerializing graph...")

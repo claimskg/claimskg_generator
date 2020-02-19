@@ -3,13 +3,14 @@ from typing import List, Tuple
 
 from nltk import TreebankWordTokenizer
 from nltk.corpus import stopwords
+from textacy.similarity import levenshtein
 
 tokenizer = TreebankWordTokenizer()
 
 _stop_words = stopwords.words('english')
 
 
-def compute_hard_overlap(collection_a: List[str], collection_b: List[str]):
+def compute_overlap(collection_a: List[str], collection_b: List[str], soft=False):
     overlap_count = 0
     index_a = 0
     while index_a < len(collection_a):
@@ -17,8 +18,10 @@ def compute_hard_overlap(collection_a: List[str], collection_b: List[str]):
         index_b = 0
         while index_b < len(collection_b):
             item_b = collection_b[index_b]
-            if item_a == item_b:
+            if item_a == item_b and not soft:
                 overlap_count += 1
+            else:
+                overlap_count += levenshtein(item_a, item_b)
             index_b += 1
         index_a += 1
     return overlap_count
@@ -46,7 +49,7 @@ def jaccard_count(overlap_count: float, union_count: float):
 
 
 def jaccard(collection_a, collection_b):
-    overlap = compute_hard_overlap(collection_a, collection_b)
+    overlap = compute_overlap(collection_a, collection_b)
     return jaccard_count(overlap, len(collection_a) + len(collection_b))
 
 

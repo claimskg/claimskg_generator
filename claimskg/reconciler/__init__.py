@@ -154,7 +154,7 @@ class FactReconciler:
         entities_a = claim_a.claim_entities + claim_a.review_entities
         entities_b = claim_b.claim_entities + claim_b.review_entities
 
-        entity_score = sim.compute_hard_overlap(entities_a, entities_b)
+        entity_score = sim.compute_overlap(entities_a, entities_b)
         num_entities_a = len(entities_a)
         num_entities_b = len(entities_b)
 
