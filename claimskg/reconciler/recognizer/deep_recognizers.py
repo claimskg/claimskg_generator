@@ -1,26 +1,33 @@
-from typing import List
+import re
+from typing import Set, Tuple, List
 
 import regex
-from nltk import TreebankWordTokenizer, StemmerI, SnowballStemmer
-from nltk.tokenize import word_tokenize
+import torch
 from tqdm import tqdm
+from transformers import AutoTokenizer, AutoModel, AutoConfig
 
 from claimskg.reconciler.dictionary import DictionaryLoader
-from claimskg.reconciler.recognizer import ConceptRecognizer, Annotation
+from claimskg.reconciler.recognizer import ConceptRecognizer, Concept, Annotation
 
 
-class IntersStemConceptRecognizer(ConceptRecognizer):
+class IntersEmbeddingConceptRecognizer(ConceptRecognizer):
 
     def __init__(self, dictionary_loader: DictionaryLoader, stop_words_file: str, termination_terms_file: str,
-                 stemmer: StemmerI = None):
+                 tokenizer: AutoTokenizer, model: AutoModel, config: AutoConfig):
         super().__init__(stop_words_file, termination_terms_file, dictionary_loader)
-        self.stemmer = stemmer
-        self.unigram_stem_index = dict()  # record the stem and give an Id
+        self.unigram_index = dict()  # record the stem and give an Id
+        self.concept_token_vector_index = dict()
         self.concept_length_index = dict()  # record the stem and give the length of the expression
-        if not stemmer:
-            self.stemmer = SnowballStemmer("english")
-
-        self.punctuation_remove = regex.compile('\p{C}', regex.UNICODE)
+        self.model = model
+        self.tokenizer = tokenizer
+        self.config = config
+        self.unk_token_id = self.tokenizer.unk_token_id
+        self.cls_token_id = self.tokenizer.cls_token_id
+        self.pad_token_id = self.tokenizer.pad_token_id
+        self.eos_token_id = self.tokenizer.eos_token_id
+        self.punctuation_regexp = regex.compile('\p{P}', re.UNICODE)
+        self.stop_words = self._piece_wise_tokenize_token_list(self.stop_words)
+        self.termination_terms = self._piece_wise_tokenize_token_list(self.termination_terms)
 
     def initialize(self):
         print("Now loading the dictionary...")
@@ -39,41 +46,94 @@ class IntersStemConceptRecognizer(ConceptRecognizer):
 
             self._load_concept_labels(concept_id, labels)
 
+    def _piece_wise_tokenize_token_list(self, token_list):
+        final_token_list = []
+
+        for token in token_list:
+            sub_tokens = self.tokenizer.tokenize(token)
+            final_token_list.append(sub_tokens[-1])
+
+        return self.tokenizer.convert_tokens_to_ids(final_token_list)
+
     def _load_concept_labels(self, concept_id, labels):
         label_index = 0
         for label in labels:
-            normalized = self.punctuation_remove.sub(" ", label).replace("-", " ")
+            inputs = self.tokenizer.encode_plus(label, add_special_tokens=True, max_length=512, pad_to_max_length=True,
+                                                return_attention_mask=True)
+            tokens = inputs['input_ids']
+            att_masks = inputs['attention_mask']
+            last_token = att_masks.index(0)
+
+            for key in inputs.keys():
+                inputs[key] = torch.tensor(inputs[key], dtype=torch.long)
+                inputs[key] = inputs[key].reshape((1, len(inputs[key])))
+
+            last_outputs, class_output = self.model(**inputs)
+            token_vectors = last_outputs[:, 0:last_token - 1, :]
+
+            concept = Concept(concept_id)
+            concept.add_label(label, label_embedding=class_output)
+            self.concept_index[concept_id] = concept
             # We tokenize the label
-            tokens = word_tokenize(normalized)
             concept_token_count = 0
             # For each token
             key = str(concept_id) + ":::" + str(label_index)
+            last_token_index = tokens.index(0) - 1
+            tokens = tokens[:last_token_index]
+            token_index = 0
             for token in tokens:
                 # We skip words that belong to the stop list and words that contain non alphanumerical characters
-                if token not in self.stop_words:
-                    token_stem = self.stem(token)
+                # we create the dictionary entry if it did not exist before
+                if token not in self.unigram_index:
+                    self.unigram_index[token] = set()
+                # if it already existed we add the concept id to the corresponding set
+                self.unigram_index[token].add(key)
 
-                    # we create the dictionary entry if it did not exist before
-                    if token_stem not in self.unigram_stem_index:
-                        self.unigram_stem_index[
-                            token_stem] = set()  # il va eut etre falloir creer une liste a la place
-                    # if it already existed we add the concept id to the corresponding set
-                    self.unigram_stem_index[token_stem].add(key)
-                    concept_token_count += 1
+                if token not in self.concept_token_vector_index:
+                    self.concept_token_vector_index[token] = dict()
+                    token_vector = token_vectors[:, token_index, :]
+                    new_shape = (token_vector.shape[1])
+                    self.concept_token_vector_index[token][concept_id] = token_vector.reshape(new_shape)
+
+                token_index += 1
+                concept_token_count += 1
             self.concept_length_index[key] = concept_token_count
             label_index += 1
 
-    def recognize(self, text) -> List[Annotation]:
+    def _tokens_to_spans(self, tokens, text: str, initial_start_offset=0):
+        spans = []  # type: List[Tuple[int, int, str]]
+        start_offset = initial_start_offset
+        end_offset = initial_start_offset
 
+        for current_token_index in range(len(tokens)):
+            raw_token = tokens[current_token_index]
+            if "#" in raw_token:
+                raw_token = raw_token.replace("#", " ").strip()
+            end_offset += len(raw_token)
+            span = (start_offset, end_offset, text[start_offset:end_offset])
+            spans.append(span)
+            if current_token_index < len(tokens) - 1 and text[end_offset] == " ":
+                offset = 0
+                while end_offset + offset < len(text) and text[end_offset + offset + 1] == " ":
+                    offset += 1
+                start_offset = end_offset + offset + 1
+                end_offset += offset + 1
+            else:
+                start_offset = end_offset
+        return spans
+
+    def recognize(self, text) -> Set[Annotation]:
         annotations = []
 
-        # We normalize the text (Remove all punctuation and replace with whitespace)
+        tokens = self.tokenizer.tokenize(text)
+        token_ids = self.tokenizer.convert_tokens_to_ids(tokens)
 
-        normalized_input_text = self.punctuation_remove.sub(" ", text).replace("-", " ").lower()
+        len_leading_whitespaces = len(text) - len(text.lstrip())
+        token_spans = self._tokens_to_spans(tokens, text, initial_start_offset=len_leading_whitespaces)
 
-        # We split the text into token spans (begin and end position from the start of the text)
-        spans = TreebankWordTokenizer().span_tokenize(normalized_input_text)
-        token_spans = [i for i in spans]
+        print(tokens)
+        print(token_ids)
+        print(token_spans)
 
         # we iterate over tokens one by one until we reach the end of the text
         current_token_span_index = 0
@@ -82,7 +142,7 @@ class IntersStemConceptRecognizer(ConceptRecognizer):
             current_span = token_spans[current_token_span_index]
 
             # we extract the string of the token from the text
-            token = normalized_input_text[current_span[0]:current_span[1]]
+            token = text[current_span[0]:current_span[1]]
 
             # if the word is a stoplist term or a termination term we skip it
             if token not in self.stop_words and token not in self.termination_terms:
@@ -102,7 +162,7 @@ class IntersStemConceptRecognizer(ConceptRecognizer):
 
                     # We get the next token and position span
                     next_span = token_spans[current_token_span_index + match_cursor]
-                    next_token = normalized_input_text[next_span[0]:next_span[1]]
+                    next_token = text[next_span[0]:next_span[1]]
 
                     # if the token is in the termination list the matching process ends here
                     if next_token in self.termination_terms:
@@ -144,21 +204,18 @@ class IntersStemConceptRecognizer(ConceptRecognizer):
                     key_parts = concept.split(":::")
                     concept_id = key_parts[0]
                     annotation = Annotation(concept_id, concept_start, concept_end, text[concept_start:concept_end],
-                                            match_cursor - stop_count, label_key=concept)
+                                            match_cursor - stop_count, label_key=concept,
+                                            concept=self.concept_index[concept_id])
                     annotations.append(annotation)
 
             current_token_span_index += 1
         # Here we filter the annotations to keep only those where the concept length matches the length of the
         # identified annotation
-        return [annotation for annotation in annotations if
-                annotation.matched_length == self.concept_length_index[annotation.label_key]]
+        return set([annotation for annotation in annotations if
+                    annotation.matched_length == self.concept_length_index[annotation.label_key]])
 
     def concepts_from_stem(self, stem):
-        if stem not in self.unigram_stem_index:
+        if stem not in self.unigram_vector_index:
             return set()
         else:
-            return self.unigram_stem_index[stem]
-
-    def stem(self, word):
-        # sno =
-        return self.stemmer.stem(self.stemmer.stem(word))
+            return self.unigram_vector_index[stem]

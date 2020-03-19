@@ -14,8 +14,8 @@ from rdflib.namespace import NamespaceManager, RDF, OWL, XSD, Namespace, RDFS
 from tqdm import tqdm
 
 import claimskg.generator.ratings
+from claimskg.generator.skosthesaurusmatcher import SkosThesaurusMatcher
 from claimskg.generator.statistics import ClaimsKGStatistics
-from claimskg.generator.thesoz import TheSoz
 from claimskg.reconciler import FactReconciler
 from claimskg.util import TypedCounter
 
@@ -59,7 +59,12 @@ class ClaimLogicalView:
         self.review_entity_categories = []
         self.claim_entities = []
         self.claim_entity_categories = []
-        self.keywords = []
+        self.keywords = set()
+        self.keywords_thesoz = set()
+        self.keywords_unesco = set()
+        self.keywords_dbpedia = set()
+        self.keywords_thesoz_dbpedia = set()
+        self.keywords_unesco_dbpedia = set()
         self.links = []
         self.text_fragments = []
         self.claimreview_author = ""
@@ -137,7 +142,15 @@ class ClaimsKGGenerator:
     def __init__(self, model_uri, sparql_wrapper=None, threshold=0.3, include_body: bool = False, resolve: bool = True,
                  use_caching: bool = False):
         self._graph = rdflib.Graph()
-        self.thesoz = TheSoz(self._graph)
+        self.thesoz = SkosThesaurusMatcher(self._graph, thesaurus_path="claimskg/data/thesoz-komplett.xml",
+                                           skos_xl_labels=True, prefix="http://lod.gesis.org/thesoz/")
+        self._graph = self.thesoz.get_merged_graph()
+
+        self.unesco = SkosThesaurusMatcher(self._graph, thesaurus_path="claimskg/data/unesco-thesaurus.xml",
+                                           skos_xl_labels=False, prefix="http://vocabularies.unesco.org/thesaurus/")
+
+        self._graph = self.unesco.get_merged_graph()
+        self._graph.load("claimskg/data/dbpedia_categories_lang_en_skos.ttl", format="turtle")
 
         self._sparql_wrapper = sparql_wrapper  # type: SPARQLWrapper
         self._uri_generator = ClaimsKGURIGenerator(model_uri)
@@ -168,6 +181,9 @@ class ClaimsKGGenerator:
 
         self._dbr_prefix = rdflib.Namespace("http://dbpedia.org/resource/")
         self._namespace_manager.bind("dbr", self._dbr_prefix, override=False)
+
+        self._dbc_prefix = rdflib.Namespace("http://dbpedia.org/resource/Category_")
+        self._namespace_manager.bind("dbc", self._dbr_prefix, override=False)
 
         self._dcat_prefix = rdflib.Namespace("http://www.w3.org/ns/dcat#")
         self._namespace_manager.bind("dcat", self._dcat_prefix, override=False)
@@ -318,6 +334,27 @@ class ClaimsKGGenerator:
 
         self._graph.add((organization, self._schema_url_property_uri, URIRef(self.model_uri)))
 
+    def _reconcile_keyword_annotations(self, claim, keyword_uri, keyword, matching_annotations, type="thesoz"):
+        for annotation in matching_annotations:
+            self._graph.add((keyword_uri, URIRef(self._dct_prefix["about"]), URIRef(annotation[0])))
+            if type == "thesoz":
+                claim.keywords_thesoz.add(keyword)
+            else:
+                claim.keywords_unesco.add(keyword)
+
+    def _reconcile_keyword_mention_with_annotations(self, claim, mention, dbpedia_entity, keyword,
+                                                    matching_annotations, type="thesoz"):
+        start = mention['begin']
+        end = mention['end']
+        for matching_annotation in matching_annotations:
+            if start == matching_annotation[2] and end == matching_annotation[3]:
+                if type == "thesoz":
+                    claim.keywords_thesoz_dbpedia.add(keyword)
+                elif type == "unesco":
+                    claim.keywords_unesco_dbpedia.add(keyword)
+                self._graph.add(
+                    (URIRef(dbpedia_entity), OWL.sameAs, URIRef(matching_annotation[0])))
+
     def _create_creative_work(self, row, claim: ClaimLogicalView):
         creative_work = self._uri_generator.creative_work_uri(row)
         self._graph.add((creative_work, RDF.type, self._schema_creative_work_class_uri))
@@ -339,24 +376,31 @@ class ClaimsKGGenerator:
                 keyword_list = keywords.split(",")
 
             for keyword in keyword_list:
+                keyword = keyword.strip()
                 keyword_uri = self._uri_generator.keyword_uri(keyword)
                 if keyword_uri not in self.keyword_uri_set:
                     self._graph.add((keyword_uri, RDF.type, self._schema_thing_class_uri))
                     self._graph.add(
                         (keyword_uri, self._schema_name_property_uri, Literal(keyword, lang=self._iso1_language_tag)))
-                    found_mention = False
+                    thesoz_matching_annotations = self.thesoz.find_keyword_matches(keyword)
+                    unesco_matching_annotations = self.unesco.find_keyword_matches(keyword)
+                    self._reconcile_keyword_annotations(claim, keyword_uri, keyword, thesoz_matching_annotations)
+                    self._reconcile_keyword_annotations(claim, keyword_uri, keyword, unesco_matching_annotations,
+                                                        type="unesco")
                     for mention in keyword_mentions:
                         if keyword.lower().strip() in mention['text'].lower().strip():
                             self.keyword_uri_set.add(keyword_uri)
-                            mention_instance = self._create_mention(mention, claim, False)
+                            mention_instance, dbpedia_entity = self._create_mention(mention, claim, False)
                             if mention_instance:
+                                claim.keywords_dbpedia.add(keyword)
                                 self._graph.add((keyword_uri, self._schema_mentions_property_uri, mention_instance))
-                                found_mention = True
-                                self.thesoz.find_with_thesoz(keyword)
-                    if not found_mention:
-                        self.thesoz.find_with_thesoz(keyword)
 
-                claim.keywords.append(keyword.strip())
+                                self._reconcile_keyword_mention_with_annotations(claim, mention, dbpedia_entity,
+                                                                                 keyword, thesoz_matching_annotations)
+                                self._reconcile_keyword_mention_with_annotations(claim, mention, dbpedia_entity,
+                                                                                 keyword, unesco_matching_annotations,
+                                                                                 type="unesco")
+                claim.keywords.add(keyword.strip())
 
                 self._graph.add((creative_work, self._schema_keywords_property_uri, Literal(keyword, lang="en")))
 
@@ -507,9 +551,13 @@ class ClaimsKGGenerator:
                 for category in categories:
                     claim.claim_entity_categories.append(category)
 
-            return mention
+            for category in categories:
+                category = category.replace(" ", "_")
+                self._graph.add((mention, URIRef(self._dct_prefix["about"]), URIRef(self._dbc_prefix[category])))
+
+            return mention, self._dbr_prefix[entity_uri]
         else:
-            return None
+            return None, None
 
     @staticmethod
     def _format_confidence_score(mention_entry):
@@ -660,7 +708,7 @@ class ClaimsKGGenerator:
             loaded_json = self._process_json(entities_json)
             if loaded_json:
                 for mention_entry in loaded_json:
-                    mention = self._create_mention(mention_entry, logical_claim, True)
+                    mention, dbpedia_entity = self._create_mention(mention_entry, logical_claim, True)
                     if mention:
                         self._graph.add((creative_work, self._schema_mentions_property_uri, mention))
 
@@ -669,7 +717,7 @@ class ClaimsKGGenerator:
             loaded_body_json = self._process_json(body_entities_json)
             if loaded_body_json:
                 for mention_entry in loaded_body_json:
-                    mention = self._create_mention(mention_entry, logical_claim, False)
+                    mention, dbpedia_entity = self._create_mention(mention_entry, logical_claim, False)
                     if mention:
                         self._graph.add((claim_review_instance, self._schema_mentions_property_uri, mention))
 
@@ -698,7 +746,7 @@ class ClaimsKGGenerator:
         return loaded_json
 
     def export_rdf(self, format):
-        graph_serialization = self._graph.serialize(format=format, encoding='utf-8')
+
         print("\nGlobal dataset statistics")
         self.global_statistics.output_stats()
 
@@ -707,6 +755,7 @@ class ClaimsKGGenerator:
         for site in self.per_source_statistics.keys():
             print("\n\n{site} statistics...".format(site=site))
             self.per_source_statistics[site].output_stats()
+        graph_serialization = self._graph.serialize(format=format, encoding='utf-8')
         return graph_serialization
 
     def reconcile_claims(self, embeddings, theta, keyword_weight,

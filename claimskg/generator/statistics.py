@@ -6,7 +6,12 @@ class StatKeys(Enum):
     CLAIM_REVIEW = "ClaimReview"
     CREATIVE_WORK = "CreativeWork"
     ENTITY = "Total Number of Entities"
-    KEYWORDS = "Keyword"
+    KEYWORDS = "Keywords"
+    KEWORDS_THESOZ = "Keywords reconciled with TheSoz"
+    KEWORDS_UNESCO = "Keywords reconciled with Unesco"
+    KEWORDS_DBPEDIA = "Keywords reconciled with DBPedia"
+    KEWORDS_THESOZ_DBPEDIA = "Keywords reconciled with both TheSoz and DBPedia"
+    KEWORDS_UNESCO_DBPEDIA = "Keywords reconciled with both UNESCO and DBPedia"
     ENTITIES_PER_REVIEW = "Entities per review"
     ENTITIES_PER_CLAIM = "Entities per claim"
     KEYWORDS_PER_REVIEW = "Keywords per review"
@@ -48,6 +53,11 @@ class ClaimsKGStatistics:
         self._increment_statistic(StatKeys.ENTITY, len(claim.claim_entities) + len(claim.review_entities))
 
         self._increment_statistic(StatKeys.KEYWORDS, len(claim.keywords))
+        self._increment_statistic(StatKeys.KEWORDS_THESOZ, len(claim.keywords_thesoz))
+        self._increment_statistic(StatKeys.KEWORDS_UNESCO, len(claim.keywords_unesco))
+        self._increment_statistic(StatKeys.KEWORDS_DBPEDIA, len(claim.keywords_dbpedia))
+        self._increment_statistic(StatKeys.KEWORDS_THESOZ_DBPEDIA, len(claim.keywords_thesoz_dbpedia))
+        self._increment_statistic(StatKeys.KEWORDS_UNESCO_DBPEDIA, len(claim.keywords_unesco_dbpedia))
         self._increment_statistic(StatKeys.KEYWORDS_PER_REVIEW, len(claim.keywords))
 
         self._increment_statistic(StatKeys.CITATIONS_PER_CREATIVE_WORK, len(claim.links))
