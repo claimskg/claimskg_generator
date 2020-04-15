@@ -46,7 +46,8 @@ _normalization_dictionary = {  # type: Dict[str, Dict[str,NormalizedRatings]]
     },
     "factscan": {  # type: Dict[str,NormalizedRatings]
         'false': NormalizedRatings.FALSE,
-        'true': NormalizedRatings.TRUE
+        'true': NormalizedRatings.TRUE,
+        'Misleading': NormalizedRatings.OTHER
     },
     "truthorfiction": {  # type: Dict[str,NormalizedRatings]
         'fiction': NormalizedRatings.FALSE,
@@ -62,7 +63,8 @@ _normalization_dictionary = {  # type: Dict[str, Dict[str,NormalizedRatings]]
         'Mostly True': NormalizedRatings.MIXTURE,
         'true/false': NormalizedRatings.MIXTURE,
         'truth & misleading': NormalizedRatings.MIXTURE,
-        'mostly truth': NormalizedRatings.MIXTURE
+        'mostly truth': NormalizedRatings.MIXTURE,
+        'misleading': NormalizedRatings.MIXTURE
     },
     "factcheck_aap": {
         "True": NormalizedRatings.TRUE,
@@ -81,6 +83,7 @@ _normalization_dictionary = {  # type: Dict[str, Dict[str,NormalizedRatings]]
         'Totalement Vrai': NormalizedRatings.TRUE,
         'Plutôt vrai': NormalizedRatings.MIXTURE,
         'Trompeur': NormalizedRatings.MIXTURE,
+        'trompeur': NormalizedRatings.MIXTURE,
         'Plutôt faux': NormalizedRatings.MIXTURE,
         'Presque': NormalizedRatings.MIXTURE,
         'Mélangé': NormalizedRatings.MIXTURE,
@@ -89,7 +92,7 @@ _normalization_dictionary = {  # type: Dict[str, Dict[str,NormalizedRatings]]
         'Incertain': NormalizedRatings.MIXTURE,
         'Imprécis': NormalizedRatings.MIXTURE,
         'Exagéré': NormalizedRatings.MIXTURE,
-        'Douteux': NormalizedRatings.MIXTURE
+        'Douteux': NormalizedRatings.MIXTURE,
 
     },
     "factcheck_afp": {
