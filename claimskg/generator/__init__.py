@@ -3,6 +3,7 @@ import html
 import itertools
 import re
 import uuid
+from logging import getLogger
 from typing import List
 from urllib.parse import urlparse
 
@@ -10,6 +11,7 @@ import rdflib
 from SPARQLWrapper import SPARQLWrapper
 from pandas.io import json
 from rdflib import URIRef, Literal, Graph
+from rdflib.extras.external_graph_libs import rdflib_to_networkx_multidigraph
 from rdflib.namespace import NamespaceManager, RDF, OWL, XSD, Namespace, RDFS
 from tqdm import tqdm
 
@@ -18,6 +20,8 @@ from claimskg.generator.skosthesaurusmatcher import SkosThesaurusMatcher
 from claimskg.generator.statistics import ClaimsKGStatistics
 from claimskg.reconciler import FactReconciler
 from claimskg.util import TypedCounter
+
+logger = getLogger()
 
 _is_valid_url_regex = re.compile(
     r'^(?:http|ftp)s?://'  # http:// or https://
@@ -150,6 +154,7 @@ class ClaimsKGGenerator:
                                            skos_xl_labels=False, prefix="http://vocabularies.unesco.org/thesaurus/")
 
         self._graph = self.unesco.get_merged_graph()
+
         self._graph.load("claimskg/data/dbpedia_categories_lang_en_skos.ttl", format="turtle")
 
         self._sparql_wrapper = sparql_wrapper  # type: SPARQLWrapper
@@ -402,7 +407,7 @@ class ClaimsKGGenerator:
                                                                                  type="unesco")
                 claim.keywords.add(keyword.strip())
 
-                self._graph.add((creative_work, self._schema_keywords_property_uri, Literal(keyword, lang="en")))
+                self._graph.add((creative_work, self._schema_keywords_property_uri, keyword_uri))
 
         links = row['extra_refered_links']
         author_url = _row_string_value(row, 'claimReview_author_url')
@@ -733,15 +738,13 @@ class ClaimsKGGenerator:
             json_string = re.sub("\",\"\"", ",\"", json_string)
             json_string = re.sub('"\n\t\"', "", json_string)
             json_string = re.sub('}\]\[\]', '}]', json_string)
-            # print(body_entities_json)
-            # print()
+
             if json_string == "[[][]]":
                 loaded_json = []
             else:
                 try:
                     loaded_json = json.loads(json_string)
                 except ValueError:
-                    # print(json_string)
                     loaded_json = None
         return loaded_json
 
@@ -769,6 +772,9 @@ class ClaimsKGGenerator:
                 source = mapping[1][0]
                 target = mapping[1][1]
                 self._graph.add((source.creative_work_uri, OWL.sameAs, target.creative_work_uri))
+
+    def materialize_indirect_claim_links(self):
+        mdg = rdflib_to_networkx_multidigraph(self._graph)
 
     def align_duplicated(self):
         count = len(self._logical_view_claims)
