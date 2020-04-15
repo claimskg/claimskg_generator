@@ -1,5 +1,6 @@
 import csv
 import getopt
+import logging
 import sys
 
 from SPARQLWrapper import SPARQLWrapper
@@ -7,12 +8,22 @@ from ruamel import yaml
 
 import claimskg
 from claimskg.generator import ClaimsKGGenerator
+
 # from claimskg.vsm.embeddings import MagnitudeEmbeddings
+
+logger = logging.getLogger()
+logger.setLevel(logging.DEBUG)
+
+ch = logging.StreamHandler(sys.stdout)
+ch.setLevel(logging.DEBUG)
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+ch.setFormatter(formatter)
+logger.addHandler(ch)
 
 
 def usage():
     f = open('exporter_help_text.txt', 'r')
-    print(f.read())
+    logger.info(f.read())
     f.close()
 
 
@@ -20,7 +31,7 @@ if __name__ == '__main__':
     argv = sys.argv[1:]
 
     if len(argv) == 0:
-        print('You must pass some parameters. Use \"-h\" to display the present help information.')
+        logger.info('You must pass some parameters. Use \"-h\" to display the present help information.')
         usage()
         exit()
 
@@ -32,7 +43,8 @@ if __name__ == '__main__':
     options = {'output': "output.ttl", 'format': "turtle", 'resolve': True, 'threshold': 0.3,
                'model-uri': "http://data.gesis.org/claimskg/", 'include-body': False, 'reconcile': -1.0,
                'caching': False, 'seed': None, 'sample': None, 'mappings-file': "./mappings.csv",
-               'embeddings-type': "MagnitudeEmbeddings", 'embeddings-path': None, 'align-duplicated': False}
+               'embeddings-type': "MagnitudeEmbeddings", 'embeddings-path': None, 'align-duplicated': False,
+               'materialize-indirect-claim-links': False}
 
     # Overriding hard-coded defaults with values from configuration file
     for (key, value) in configuration_dict.items():
@@ -42,7 +54,7 @@ if __name__ == '__main__':
         opts, args = getopt.getopt(argv, "",
                                    ("input=", "output=", "format=", "model-uri=", "resolve", "threshold=",
                                     "include-body", "reconcile=", "caching", "sample=", "seed=", "mappings-file=",
-                                    "align-duplicated"))
+                                    "align-duplicated", "materialize-indirect-claim-links"))
 
         for opt, arg in opts:
             if opt == '--input':
@@ -71,14 +83,16 @@ if __name__ == '__main__':
                 options['seed'] = int(arg)
             elif opt == "--mappings-file":
                 options['mappings-file'] = arg
+            elif opt == "--materialize-indirect-claim-links":
+                options['materialize-indirect-claim-links'] = True
 
     except:
-        print('Arguments parser error')
+        logger.info('Arguments parser error')
         usage()
         exit()
 
     if "input" not in options.keys():
-        print("Missing mandatory parameter --input")
+        logger.info("Missing mandatory parameter --input")
         usage()
         exit()
 
@@ -86,8 +100,7 @@ if __name__ == '__main__':
     if options['resolve']:
         sparql_wrapper = SPARQLWrapper("https://dbpedia.org/sparql/")
 
-    print()
-    print("Loading data...")
+    logger.info("Loading data...")
     csv.field_size_limit(sys.maxsize)
     # pandas_frame = pandas.read_csv(options['input'], sep=',', skipinitialspace=True, quotechar='"', escapechar='"', engine="python",encoding="utf-8")
 
@@ -99,7 +112,7 @@ if __name__ == '__main__':
     theta = options['reconcile']
     embeddings = None
     if theta > 0 and options['embeddings-path']:
-        print("Loading embeddings...")
+        logger.info("Loading embeddings...")
         class_name = options['embeddings-type']
         embeddings_class = getattr(claimskg.vsm.embeddings, class_name)
         # embeddings = MagnitudeEmbeddings(options['embeddings-path'])
@@ -110,28 +123,27 @@ if __name__ == '__main__':
                                   threshold=options['threshold'], resolve=options['resolve'],
                                   use_caching=options['caching'])
 
-    print()
-    print("Generating model from CSV data...")
+    logger.info("Generating model from CSV data...")
     generator.generate_model(dataset_rows)
 
     if theta > 0:
-        print()
-        print("Reconciling claims...")
+        logger.info("Reconciling claims...")
         generator.reconcile_claims(embeddings, theta=theta, keyword_weight=1, link_weight=1, text_weight=1,
                                    entity_weight=1, mappings_file_path=options['mappings-file'],
                                    samples=options['sample'], seed=options['seed'])
     if options['align-duplicated']:
-        print()
-        print("Matching exactly identical claims...")
+        logger.info("Matching exactly identical claims...")
         generator.align_duplicated()
 
-    print()
-    print("\nSerializing graph...")
+    if options['materialize-indirect-claim-links']:
+        logger.info("Materializing thematic claim links trough thesaurus hierarchy...")
+        generator.materialize_indirect_claim_links()
+
+    logger.info("\nSerializing graph...")
     output = generator.export_rdf(options['format'])
     file = open(options['output'], "w")
 
-    print()
-    print("Writing to {file} ...\t\t\t".format(file=options["output"]))
+    logger.info("Writing to {file} ...\t\t\t".format(file=options["output"]))
     file.write(output.decode("utf-8"))
     file.flush()
     file.close()
