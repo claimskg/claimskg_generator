@@ -1,17 +1,19 @@
-from SPARQLWrapper import JSON
-import redis
 import json
+
+import redis
+from SPARQLWrapper import JSON
 
 r = redis.StrictRedis()
 
 
 class SparQLOffsetFetcher:
 
-    def __init__(self, sparql_wrapper, page_size, where_body, select_columns):
+    def __init__(self, sparql_wrapper, page_size, where_body, select_columns, prefixes=""):
         self.sparql_wrapper = sparql_wrapper
         self.page_size = page_size
         self.current_offset = 0
         self.where_body = where_body
+        self.prefixes = prefixes
         self.select_columns = select_columns
         sparql_wrapper.setReturnFormat(JSON)
         self.count = -1
@@ -19,10 +21,10 @@ class SparQLOffsetFetcher:
 
     def __get_count__(self):
         if self.count == -1:
-            query = """ SELECT count(distinct *) as ?count WHERE {{
+            query = """{prefixes} SELECT count(distinct *) as ?count WHERE {{
                 {where_body}
             }}
-            """.format(where_body=self.where_body)
+            """.format(where_body=self.where_body, prefixes=self.prefixes)
             result = self._fetch_from_cache_or_query(query)
             count = int(result['results']['bindings'][0]['count']["value"])
             self.count = count
@@ -31,11 +33,11 @@ class SparQLOffsetFetcher:
 
     def next_page(self):
         if self.current_offset < self.count:
-            query = """ SELECT {select_columns} WHERE {{
+            query = """{prefixes} SELECT {select_columns} WHERE {{
                         {where_body}
                     }} LIMIT {page_size} OFFSET {offset}
                     """.format(select_columns=self.select_columns, where_body=self.where_body, page_size=self.page_size,
-                               offset=self.current_offset)
+                               offset=self.current_offset, prefixes=self.prefixes)
             result = self._fetch_from_cache_or_query(query)
             self.current_offset += self.page_size
             return result['results']['bindings']
