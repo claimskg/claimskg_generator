@@ -149,3 +149,10 @@ resources/catalog-v001.xml
 resources/.project
 
 *.yaml
+test.nt
+test.rar
+claimskg/data/article_categories_en.ttl.bz2
+claimskg/data/categories_lang=en_skos.ttl.bz2
+claimskg/data/category_labels_en.ttl.bz2
+claimskg/data/claimskg_20_12_2018.ttl.gz
+claimskg/data/dbpedia_categories_lang_en_skos.ttl

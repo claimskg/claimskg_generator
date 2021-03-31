@@ -410,9 +410,10 @@ class ClaimsKGGenerator:
                 self._graph.add((creative_work, self._schema_keywords_property_uri, keyword_uri))
 
         links = row['extra_refered_links']
-        author_url = _row_string_value(row, 'claimReview_author_url')
+        author_url = _row_string_value(row, 'claimReview_author_name')
+
         if links:
-            links = links[1:-1].split(",")
+            links = links[0:-1].split(",") # 1:-1
             for link in links:
                 stripped_link = link.strip()
                 if len(stripped_link) > 0 and stripped_link[0] != "#" and re.match(_is_valid_url_regex,
