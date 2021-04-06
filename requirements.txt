@@ -4,7 +4,12 @@ pymagnitude
 numpy
 pandas
 rdflib
-urllib
+urllib3
 typing
 SPARQLWrapper
 redis
+ruamel-yaml
+python-Levenshtein
+textacy
+sent2vec
+metaphone
