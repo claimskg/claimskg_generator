@@ -4,8 +4,7 @@ import logging
 import sys
 
 from SPARQLWrapper import SPARQLWrapper
-#from ruamel import yaml
-import yaml
+from ruamel import yaml
 
 import claimskg
 from claimskg.generator import ClaimsKGGenerator
@@ -102,13 +101,11 @@ if __name__ == '__main__':
         sparql_wrapper = SPARQLWrapper("https://dbpedia.org/sparql/")
 
     logger.info("Loading data...")
-    #csv.field_size_limit(sys.maxsize)
-    csv.field_size_limit(1000000000)
-    
+    csv.field_size_limit(sys.maxsize)
     # pandas_frame = pandas.read_csv(options['input'], sep=',', skipinitialspace=True, quotechar='"', escapechar='"', engine="python",encoding="utf-8")
 
     dataset_rows = []
-    with open(options['input'], encoding='utf8') as csv_file:
+    with open(options['input']) as csv_file:
         csv_reader = csv.DictReader(csv_file, delimiter=',', quotechar='"', dialect=csv.unix_dialect)
         for row in csv_reader:
             dataset_rows.append(row)

@@ -1,6 +1,6 @@
 import hashlib
 from abc import ABC, abstractmethod
-import sent2vec
+from sent2vec import Sent2vecModel
 from typing import List
 
 import numpy
@@ -246,6 +246,8 @@ class DenseEmbeddings(Embeddings):
         return self._dim
 
 
+
+
 # class MagnitudeEmbeddings(Embeddings):
 #
 #     def __init__(self, embeddings_file):
@@ -276,6 +278,7 @@ class DenseEmbeddings(Embeddings):
 #         pairwise_similarities = self.model.similarity(one_grams_a, string_b_tokens)
 #         average_similarity_vector = self.arithmetic_mean_aggregation(pairwise_similarities)
 #         return average_similarity_vector.mean()
+
 
 class Sent2VecEmbeddings(Embeddings):
     def __init__(self, embeddings_file):
