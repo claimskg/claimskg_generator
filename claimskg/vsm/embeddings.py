@@ -1,6 +1,6 @@
 import hashlib
 from abc import ABC, abstractmethod
-from sent2vec import Sent2vecModel
+import sent2vec
 from typing import List
 
 import numpy

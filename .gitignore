@@ -149,3 +149,17 @@ resources/catalog-v001.xml
 resources/.project
 
 *.yaml
+
+# Additional file Download
+# https://databus.dbpedia.org/dbpedia/collections/latest-core
+# https://downloads.dbpedia.org/repo/dbpedia/generic/categories/2021.03.01/categories_lang=en_skos.ttl.bz2 renamed to:
+claimskg/data/categories_lang=en_skos.ttl.bz2
+claimskg/data/dbpedia_categories_lang_en_skos.ttl
+
+# From claimskg-extractor "Snopes" 
+# output_got.csv
+
+# Testresult:
+test.nt
+test.rar
+
