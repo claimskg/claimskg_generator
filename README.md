@@ -37,3 +37,7 @@ To install the dependencies you may use: `pip3 install -r requirements.txt`
  
   The URIs correspond to that of the following dataset: 
   http://andon.tchechmedjiev.eu/files/claimskg_20_12_2018.ttl.gz
+  
+  Latest releases of core data from en.wikipedia.org (ttl file):
+  https://databus.dbpedia.org/dbpedia/collections/latest-core
+  https://downloads.dbpedia.org/repo/dbpedia/generic/categories/2021.03.01/categories_lang=en_skos.ttl.bz2
