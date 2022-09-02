@@ -3,12 +3,13 @@ import html
 import itertools
 import re
 import uuid
+import pandas as pd
 from logging import getLogger
 from typing import List
 from urllib.parse import urlparse
 
 import rdflib
-from SPARQLWrapper import SPARQLWrapper
+from SPARQLWrapper import SPARQLWrapper,JSON
 from pandas.io import json
 from rdflib import URIRef, Literal, Graph
 from rdflib.extras.external_graph_libs import rdflib_to_networkx_multidigraph
@@ -20,6 +21,8 @@ from claimskg.generator.skosthesaurusmatcher import SkosThesaurusMatcher
 from claimskg.generator.statistics import ClaimsKGStatistics
 from claimskg.reconciler import FactReconciler
 from claimskg.util import TypedCounter
+
+from claimskg.annotation import EntityFishingAnnotator
 
 logger = getLogger()
 
@@ -40,9 +43,16 @@ source_uri_dict = {
     'checkyourfact': "http://checkyourfact.com",
     'factscan': "http://factscan.ca",
     'factcheck_aap': "https://factcheck.aap.com.au",
-    'factuel_afp_fr': "https://factuel.afp.com/",
+    'factual_afp': "https://factuel.afp.com/",
     "factcheck_afp": "https://factcheck.afp.com/",
-    "fullfact": "https://fullfact.org/"
+    "fullfact": "https://fullfact.org/",
+    "polygraph": "https://www.polygraph.info/",
+    "eufactcheck": "https://eufactcheck.eu/",
+    "factograph": "https://www.factograph.info/",
+    "fatabyyano": "https://fatabyyano.net/",
+    "newtral": "https://www.newtral.es/",
+    "Vishvanews":"https://www.vishvasnews.com/",
+    "euvsdisinfo" : "https://euvsdisinfo.eu/"
 }
 
 
@@ -146,16 +156,16 @@ class ClaimsKGGenerator:
     def __init__(self, model_uri, sparql_wrapper=None, threshold=0.3, include_body: bool = False, resolve: bool = True,
                  use_caching: bool = False):
         self._graph = rdflib.Graph()
-        self.thesoz = SkosThesaurusMatcher(self._graph, thesaurus_path="claimskg/data/thesoz-komplett.xml",
-                                           skos_xl_labels=True, prefix="http://lod.gesis.org/thesoz/")
-        self._graph = self.thesoz.get_merged_graph()
+        #self.thesoz = SkosThesaurusMatcher(self._graph, thesaurus_path="claimskg/data/thesoz-komplett.xml",
+                                           #skos_xl_labels=True, prefix="http://lod.gesis.org/thesoz/")
+        #self._graph = self.thesoz.get_merged_graph()
 
-        self.unesco = SkosThesaurusMatcher(self._graph, thesaurus_path="claimskg/data/unesco-thesaurus.xml",
-                                           skos_xl_labels=False, prefix="http://vocabularies.unesco.org/thesaurus/")
+        #self.unesco = SkosThesaurusMatcher(self._graph, thesaurus_path="claimskg/data/unesco-thesaurus.xml",
+                                           #skos_xl_labels=False, prefix="http://vocabularies.unesco.org/thesaurus/")
 
-        self._graph = self.unesco.get_merged_graph()
+        #self._graph = self.unesco.get_merged_graph()
 
-        self._graph.load("claimskg/data/dbpedia_categories_lang_en_skos.ttl", format="turtle")
+        #self._graph.load("claimskg/data/dbpedia_categories_lang_en_skos.ttl", format="turtle")
 
         self._sparql_wrapper = sparql_wrapper  # type: SPARQLWrapper
         self._uri_generator = ClaimsKGURIGenerator(model_uri)
@@ -173,9 +183,14 @@ class ClaimsKGGenerator:
 
         self.counter = TypedCounter()
 
+        self._annotator = EntityFishingAnnotator(api_uri='http://localhost:8090/service/')
+
         self._rdfs_prefix = rdflib.Namespace("http://www.w3.org/2000/01/rdf-schema#")
         self._namespace_manager.bind('rdfs', self._rdfs_prefix, override=False)
-
+        
+        #self._rdf_prefix = rdflib.Namespace("http://www.w3.org/1999/02/22-rdf-syntax-ns#") #changes
+        #self._namespace_manager.bind('rdf', self._rdf_prefix, override=False)
+        
         self._schema_prefix = rdflib.Namespace("http://schema.org/")
         self._namespace_manager.bind('schema', self._schema_prefix, override=False)
 
@@ -187,8 +202,8 @@ class ClaimsKGGenerator:
         self._dbr_prefix = rdflib.Namespace("http://dbpedia.org/resource/")
         self._namespace_manager.bind("dbr", self._dbr_prefix, override=False)
 
-        self._dbc_prefix = rdflib.Namespace("http://dbpedia.org/resource/Category_")
-        self._namespace_manager.bind("dbc", self._dbr_prefix, override=False)
+        self._dbc_prefix = rdflib.Namespace("http://dbpedia.org/resource/Category_")  #changes
+        self._namespace_manager.bind("dbc", self._dbc_prefix, override=False)
 
         self._dcat_prefix = rdflib.Namespace("http://www.w3.org/ns/dcat#")
         self._namespace_manager.bind("dcat", self._dcat_prefix, override=False)
@@ -259,6 +274,9 @@ class ClaimsKGGenerator:
 
         self.its_ta_confidence_property_uri = URIRef(self._its_prefix['taConfidence'])
         self.its_ta_ident_ref_property_uri = URIRef(self._its_prefix['taIdentRef'])
+        
+        #self._rdf_type = URIRef(self._rdf_prefix['type'])
+        
 
         self._logical_view_claims = []  # type: List[ClaimLogicalView]
         self._creative_works_index = []
@@ -305,11 +323,16 @@ class ClaimsKGGenerator:
                 (claim_review_instance, self._schema_url_property_uri, URIRef(row['claimReview_url'])))
 
         review_date = row['claimReview_datePublished']
-        if review_date:
-            self._graph.add(
-                (claim_review_instance, self._schema_date_published_property_uri,
-                 Literal(review_date, datatype=XSD.date)))
-            claim.review_date = datetime.datetime.strptime(review_date, "%Y-%m-%d").date()
+        try:
+        
+            if review_date:
+                self._graph.add(
+                    (claim_review_instance, self._schema_date_published_property_uri,
+                    Literal(review_date, datatype=XSD.date)))
+                claim.review_date = datetime.datetime.strptime(review_date, "%Y-%m-%d").date()
+        except Exception as e:
+            print(str(e))
+            pass
         self._graph.add((claim_review_instance, self._schema_in_language_preperty_uri, self._english_uri))
 
         return claim_review_instance
@@ -387,11 +410,11 @@ class ClaimsKGGenerator:
                     self._graph.add((keyword_uri, RDF.type, self._schema_thing_class_uri))
                     self._graph.add(
                         (keyword_uri, self._schema_name_property_uri, Literal(keyword, lang=self._iso1_language_tag)))
-                    thesoz_matching_annotations = self.thesoz.find_keyword_matches(keyword)
-                    unesco_matching_annotations = self.unesco.find_keyword_matches(keyword)
-                    self._reconcile_keyword_annotations(claim, keyword_uri, keyword, thesoz_matching_annotations)
-                    self._reconcile_keyword_annotations(claim, keyword_uri, keyword, unesco_matching_annotations,
-                                                        type="unesco")
+                    #thesoz_matching_annotations = self.thesoz.find_keyword_matches(keyword)
+                    #unesco_matching_annotations = self.unesco.find_keyword_matches(keyword)
+                    #self._reconcile_keyword_annotations(claim, keyword_uri, keyword, thesoz_matching_annotations)
+                    #self._reconcile_keyword_annotations(claim, keyword_uri, keyword, unesco_matching_annotations,
+                                                        #type="unesco")
                     for mention in keyword_mentions:
                         if keyword.lower().strip() in mention['text'].lower().strip():
                             self.keyword_uri_set.add(keyword_uri)
@@ -477,9 +500,13 @@ class ClaimsKGGenerator:
         original_rating = self._uri_generator.create_original_rating_uri(row)
 
         rating_alternate_name = row['rating_alternateName']
+        
+        print(rating_alternate_name)
         if rating_alternate_name:
             escaped_alternate_rating_name = html.escape(row['rating_alternateName']).encode('ascii',
                                                                                             'xmlcharrefreplace')
+            #print("2")
+            #print(escaped_alternate_rating_name)
             self._graph.add(
                 (original_rating, self._schema_alternate_name_property_uri,
                  Literal(escaped_alternate_rating_name)))
@@ -488,20 +515,32 @@ class ClaimsKGGenerator:
 
         rating_value = row['rating_ratingValue'].replace("[", "").replace("]", "").replace("'", "").replace(",",
                                                                                                             "").strip()
-
-        if rating_value and len(rating_value) > 0:
-            value = float(rating_value)
-            self._graph.add(
-                (original_rating, self._schema_rating_value_property_uri,
-                 Literal(value, datatype=XSD.float)))
+        #print("3")
+        #print(rating_value)
+        try:
+            if rating_value and len(rating_value) > 0:
+                value = float(rating_value)
+                self._graph.add(
+                    (original_rating, self._schema_rating_value_property_uri,
+                    Literal(value, datatype=XSD.float)))
+        except Exception as e:
+            print(str(e))
+            pass
+            
 
         organization = self._uri_generator.organization_uri(row)
         self._graph.add((original_rating, self._schema_author_property_uri, organization))
 
         normalized_rating_enum = ratings.normalize(_row_string_value(row, "claimReview_author_name").lower(),
                                                    _row_string_value(row, "rating_alternateName").lower())
+        #print("4")
+        #print(normalized_rating_enum)
+       
         claim.normalized_rating = normalized_rating_enum.name
+        #print("5")
+        #print(claim.normalized_rating)
         normalized_rating = self._uri_generator.create_normalized_rating_uri(normalized_rating_enum)
+        print(normalized_rating)
         self._graph.add((normalized_rating, RDF.type, self._schema_rating_class_uri))
         self._graph.add(
             (normalized_rating, self._schema_alternate_name_property_uri,
@@ -514,59 +553,101 @@ class ClaimsKGGenerator:
 
         claimskg_org = self._uri_generator.claimskg_organization_uri()
         self._graph.add((normalized_rating, self._schema_author_property_uri, claimskg_org))
-
+        #print(original_rating)
+        #print("111111111")
+        #print(normalized_rating)
         return original_rating, normalized_rating
 
     def _create_mention(self, mention_entry, claim: ClaimLogicalView, in_review):
-        rho_value = float(mention_entry['score'])
-        if rho_value > self._threshold:
+        #print(in_review)
+        #print("+++++")
+        #print(mention_entry)
+        try:
+            rho_value = float(mention_entry['nerd_selection_score'])
+            if rho_value > self._threshold:
+                text = mention_entry['rawName']
+                start = mention_entry['offsetStart']
+                end = mention_entry['offsetEnd']
+                #entity_uri = mention_entry['wikidataId']  #changes susmita
+                wiki_external_ref = mention_entry['wikipediaExternalRef']
+                #print(type(wiki_external_ref))        
+                sparql = SPARQLWrapper("http://dbpedia.org/sparql")
+                query = """
+                        PREFIX wd: <http://www.wikidata.org/entity/>
+                        SELECT DISTINCT ?dbpedia_id WHERE {
+                        ?dbpedia_id owl:sameAs ?wikidata_id  .?dbpedia_id dbo:wikiPageID ?wikipedia_id .VALUES (?wikipedia_id) {(%s)}
+                        }
+                        """
+                
+                query = query % wiki_external_ref
+    
+                sparql.setQuery(query)
+                sparql.setReturnFormat(JSON)
+                result = sparql.query().convert()
+                results_df = pd.json_normalize(result['results']['bindings'])
+                entity_uri = results_df.iloc[0]['dbpedia_id.value']
+                print("uri")
+                print(entity_uri)
+                entity_uri = entity_uri.split('/')[-1]
+                
+                
+                #entity_uri = mention_entry['entities'].replace(" ", "_")
+                mention = self._uri_generator.mention_uri(start, end, text, entity_uri, rho_value,
+                                                     ",".join(claim.text_fragments))
+                print("mention")
+                print(mention)
+                self._graph.add((mention, RDF.type, self._nif_context_class_uri))  
+                self._graph.add((mention, RDF.type, self._nif_RFC5147String_class_uri))
+                
+                print(self._nif_context_class_uri)
+                self._graph.add((mention, self._nif_is_string_property_uri,
+                                 Literal(text, lang=self._iso1_language_tag)))
+                self._graph.add((mention, self._nif_begin_index_property_uri, Literal(str(start), datatype=XSD.int))) #changes....
+                self._graph.add((mention, self._nif_end_index_property_uri, Literal(str(end), datatype=XSD.int))) #changes....
 
-            text = mention_entry['text']
-            start = mention_entry['begin']
-            end = mention_entry['end']
-            entity_uri = mention_entry['entity'].replace(" ", "_")
-            categories = mention_entry['categories']
-            if len(categories) > 0:
-                categories = categories[0].split(",")
+                # TODO: Fix values so that they aren't displayed in scientific notation
+                self._graph.add(
+                    (mention, self.its_ta_confidence_property_uri,
+                     Literal(float(self._format_confidence_score(mention_entry)), datatype=XSD.float)))
 
-            mention = self._uri_generator.mention_uri(start, end, text, entity_uri, rho_value,
-                                                      ",".join(claim.text_fragments))
+                self._graph.add((mention, self.its_ta_ident_ref_property_uri, self._dbr_prefix[entity_uri])) 
+                print(self._dbr_prefix[entity_uri])
+                #self._graph.add((mention, self.its_ta_ident_ref_property_uri,rdflib.term.URIRef((entity_uri))) )
+                #####################################domains not always present
+                try:
+                    #categories = mention_entry['domains']
+                    #if len(categories) > 0:
+                        #categories = categories[0].split(",")
+                    if not in_review: #####changes susmita due to entity extraction from claim review true
+                        claim.review_entities.append(entity_uri)
+                        #print("b")
+                        #for category in categories:
+                            #claim.review_entity_categories.append(category)
+                    if in_review:
+                        claim.claim_entities.append(entity_uri)
+                        #print("a")
+                        #for category in categories:
+                            #claim.claim_entity_categories.append(category)
+                    
+                    #for category in categories:
+                        #category = category.replace(" ", "_")
+                        #self._graph.add((mention, URIRef(self._dct_prefix["about"]), URIRef(self._dbc_prefix[category])))   
+                except KeyError as e:
+                    print(str(e))
+                
 
-            self._graph.add((mention, RDF.type, self._nif_context_class_uri))
-            self._graph.add((mention, RDF.type, self._nif_RFC5147String_class_uri))
-
-            self._graph.add((mention, self._nif_is_string_property_uri,
-                             Literal(text, lang=self._iso1_language_tag)))
-            self._graph.add((mention, self._nif_begin_index_property_uri, Literal(int(start), datatype=XSD.integer)))
-            self._graph.add((mention, self._nif_end_index_property_uri, Literal(int(end), datatype=XSD.integer)))
-
-            # TODO: Fix values so that they aren't displayed in scientific notation
-            self._graph.add(
-                (mention, self.its_ta_confidence_property_uri,
-                 Literal(float(self._format_confidence_score(mention_entry)), datatype=XSD.float)))
-
-            self._graph.add((mention, self.its_ta_ident_ref_property_uri, self._dbr_prefix[entity_uri]))
-            if in_review:
-                claim.review_entities.append(entity_uri)
-                for category in categories:
-                    claim.review_entity_categories.append(category)
+                return mention, self._dbr_prefix[entity_uri]
+                
             else:
-                claim.claim_entities.append(entity_uri)
-
-                for category in categories:
-                    claim.claim_entity_categories.append(category)
-
-            for category in categories:
-                category = category.replace(" ", "_")
-                self._graph.add((mention, URIRef(self._dct_prefix["about"]), URIRef(self._dbc_prefix[category])))
-
-            return mention, self._dbr_prefix[entity_uri]
-        else:
+                return None, None
+        except Exception as e:
+            print(str(e))
             return None, None
-
+                
+                
     @staticmethod
     def _format_confidence_score(mention_entry):
-        value = float(mention_entry['score'])
+        value = float(mention_entry['nerd_selection_score'])
         rounded_to_two_decimals = round(value, 2)
         return str(rounded_to_two_decimals)
 
@@ -708,17 +789,37 @@ class ClaimsKGGenerator:
             self._graph.add(
                 (claim_review_instance, rdflib.term.URIRef(self._schema_prefix['reviewRating']), normalized))
 
-            # For claim review mentions
-            entities_json = row['extra_entities_claimReview_claimReviewed']  # type: str
+            
+            # Related entity-fishing-client-python entities:
+            #claim.claim
+            #claim.claim_entities = "" row['extra_entities_claimReview_claimReviewed'] != 
+
+            #claim.body
+            #claim.body_entities = ""
+            
+            #claim.tags
+            #claim.keyword_entities = ""
+            
+            #claim.author
+            #claim.author_entities = ""
+
+            #self.annotator = EntityFishingAnnotator(configuration.annotator_uri)
+
+            # For claim mentions
+            entities_json = self._annotator.annotate(row['claimReview_claimReviewed'])  # type: str
+            print("--------------------------------")
+            #entities_json = row['extra_entities_claimReview_claimReviewed']  # type: str
             loaded_json = self._process_json(entities_json)
             if loaded_json:
                 for mention_entry in loaded_json:
-                    mention, dbpedia_entity = self._create_mention(mention_entry, logical_claim, True)
+                    mention, dbpedia_entity = self._create_mention(mention_entry, logical_claim, True) ##### changes
                     if mention:
                         self._graph.add((creative_work, self._schema_mentions_property_uri, mention))
 
-            # For Creative Work mentions
-            body_entities_json = row['extra_entities_body']
+            ## For Creative Work mentions
+            # For  review mentions
+            #body_entities_json = row['extra_body']
+            body_entities_json = self._annotator.annotate(row['extra_body'])
             loaded_body_json = self._process_json(body_entities_json)
             if loaded_body_json:
                 for mention_entry in loaded_body_json:

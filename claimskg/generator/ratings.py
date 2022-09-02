@@ -52,19 +52,40 @@ _normalization_dictionary = {  # type: Dict[str, Dict[str,NormalizedRatings]]
     "truthorfiction": {  # type: Dict[str,NormalizedRatings]
         'fiction': NormalizedRatings.FALSE,
         'truth': NormalizedRatings.TRUE,
-        'truth & fiction': NormalizedRatings.MIXTURE,
-        'mostly fiction': NormalizedRatings.MIXTURE,
-        'truth & misleading': NormalizedRatings.MIXTURE,
-        'mostly truth': NormalizedRatings.MIXTURE
-    },
-    "checkyourfact": {  # type: Dict[str,NormalizedRatings]
-        'False': NormalizedRatings.FALSE,
-        'True': NormalizedRatings.TRUE,
-        'Mostly True': NormalizedRatings.MIXTURE,
-        'true/false': NormalizedRatings.MIXTURE,
+        'Mixed': NormalizedRatings.MIXTURE,
+        'Reported as Fiction': NormalizedRatings.MIXTURE,
         'truth & misleading': NormalizedRatings.MIXTURE,
         'mostly truth': NormalizedRatings.MIXTURE,
-        'misleading': NormalizedRatings.MIXTURE
+        'Decontextualized': NormalizedRatings.MIXTURE,
+        'Not True': NormalizedRatings.MIXTURE,
+        'true': NormalizedRatings.TRUE,
+        'Unknown': NormalizedRatings.OTHER,
+        'Misattributed': NormalizedRatings.OTHER,
+        'Disputed': NormalizedRatings.MIXTURE,
+        'Outdated': NormalizedRatings.OTHER,
+        'Incorrect Attribution': NormalizedRatings.OTHER,
+        'Correct Attribution': NormalizedRatings.OTHER,
+        'Commentary': NormalizedRatings.OTHER,
+        'Reported as Truth': NormalizedRatings.TRUE,
+        'Mostly Fiction': NormalizedRatings.FALSE,
+        'Unproven': NormalizedRatings.OTHER,
+        'Authorship Confirmed': NormalizedRatings.OTHER,
+        'Truth! & Fiction! & Unproven!': NormalizedRatings.MIXTURE,
+        'Depends on Where You Vote': NormalizedRatings.MIXTURE,
+        'Unofficial': NormalizedRatings.OTHER,
+        'Truth! But an Opinion!': NormalizedRatings.MIXTURE,
+        'Truth! But Postponed!': NormalizedRatings.MIXTURE,
+        'Pending Investigation!': NormalizedRatings.OTHER,
+        
+    },
+    "checkyourfact": {  # type: Dict[str,NormalizedRatings]
+        'false': NormalizedRatings.FALSE,
+        'true': NormalizedRatings.TRUE,
+        'mostly true': NormalizedRatings.MIXTURE,
+        'true/false': NormalizedRatings.MIXTURE,
+        'verdict false': NormalizedRatings.FALSE,
+        'mostly truth': NormalizedRatings.MIXTURE,
+        'misleading': NormalizedRatings.FALSE
     },
     "factcheck_aap": {
         "True": NormalizedRatings.TRUE,
@@ -74,20 +95,25 @@ _normalization_dictionary = {  # type: Dict[str, Dict[str,NormalizedRatings]]
         "Somewhat True": NormalizedRatings.MIXTURE,
         "Somewhat False": NormalizedRatings.MIXTURE
     },
-    "factuel_afp_fr": {
-        'Faux': NormalizedRatings.FALSE,
-        'Totalement faux': NormalizedRatings.FALSE,
-        'Démenti': NormalizedRatings.FALSE,
-        "C'est une oeuvre de fiction": NormalizedRatings.FALSE,
-        'Vrai': NormalizedRatings.TRUE,
-        'Totalement Vrai': NormalizedRatings.TRUE,
-        'Plutôt vrai': NormalizedRatings.MIXTURE,
-        'Trompeur': NormalizedRatings.MIXTURE,
+    "factual_afp": {
+        'faux': NormalizedRatings.FALSE,
+        'article satirique': NormalizedRatings.FALSE,
+        'infondé': NormalizedRatings.FALSE,
+        'montage': NormalizedRatings.FALSE,
         'trompeur': NormalizedRatings.MIXTURE,
-        'Plutôt faux': NormalizedRatings.MIXTURE,
-        'Presque': NormalizedRatings.MIXTURE,
-        'Mélangé': NormalizedRatings.MIXTURE,
-        'Mélange': NormalizedRatings.MIXTURE,
+        'parodie': NormalizedRatings.FALSE,
+        'vrai': NormalizedRatings.TRUE,
+        'Contexte manquant': NormalizedRatings.FALSE,
+        'propos sortis de leur contexte': NormalizedRatings.FALSE,
+        'manque de contexte': NormalizedRatings.FALSE,        
+        "faux, ces photos montrent un couple britannique sans aucun lien de parenté et illustrent un article satirique": NormalizedRatings.FALSE,
+        'faux, manque de contexte : vidéo tronquée': NormalizedRatings.FALSE,
+        'totalement vrai': NormalizedRatings.TRUE,
+        'plutôt vrai': NormalizedRatings.MIXTURE,        
+        'trompeur': NormalizedRatings.MIXTURE,
+        'plutôt faux': NormalizedRatings.MIXTURE,
+        'presque': NormalizedRatings.MIXTURE,
+        'mélangé': NormalizedRatings.MIXTURE,
         'Inexact': NormalizedRatings.MIXTURE,
         'Incertain': NormalizedRatings.MIXTURE,
         'Imprécis': NormalizedRatings.MIXTURE,
@@ -95,18 +121,89 @@ _normalization_dictionary = {  # type: Dict[str, Dict[str,NormalizedRatings]]
         'Douteux': NormalizedRatings.MIXTURE,
 
     },
-    "factcheck_afp": {
-        'False': NormalizedRatings.FALSE,
-        'Fake': NormalizedRatings.FALSE,
-        'Mixed': NormalizedRatings.MIXTURE,
-        'Hoax': NormalizedRatings.FALSE,
-        'Falso': NormalizedRatings.FALSE,
-        'APRIL FOOL': NormalizedRatings.FALSE
+    #"factcheck_afp": {
+        #'False': NormalizedRatings.FALSE,
+       # 'Fake': NormalizedRatings.FALSE,
+       # 'Mixed': NormalizedRatings.MIXTURE,
+        #'Hoax': NormalizedRatings.FALSE,
+        #'Falso': NormalizedRatings.FALSE,
+        #'APRIL FOOL': NormalizedRatings.FALSE,
+       # 'Misleading' : NormalizedRatings.MIXTURE
+   # },
+     "factcheck_afp": {
+        'false': NormalizedRatings.FALSE,
+        'partly false': NormalizedRatings.MIXTURE,
+        'misleading': NormalizedRatings.FALSE,
+        'satire': NormalizedRatings.FALSE,
+        'missing context': NormalizedRatings.FALSE,
+        'altered image': NormalizedRatings.OTHER,
+        'not recommended' : NormalizedRatings.OTHER,
+        'true' : NormalizedRatings.TRUE,
+        'unproven': NormalizedRatings.OTHER,
+        'no evidence': NormalizedRatings.OTHER,
+        'photo out of context': NormalizedRatings.OTHER,
+        'misattributed': NormalizedRatings.FALSE,
+        'Outdated': NormalizedRatings.OTHER
     },
     "fullfact": {
-        'Correct': NormalizedRatings.TRUE,
-        'Incorrect': NormalizedRatings.FALSE,
-        'Not quite': NormalizedRatings.MIXTURE
+        'true': NormalizedRatings.TRUE,
+        'false': NormalizedRatings.FALSE,
+        'mixture': NormalizedRatings.MIXTURE,
+        'other': NormalizedRatings.OTHER
+    },
+    "eufactcheck": {
+       
+        'm': NormalizedRatings.MIXTURE,
+        'f': NormalizedRatings.FALSE,
+        't': NormalizedRatings.TRUE,        
+        'u': NormalizedRatings.OTHER
+        
+    },
+      "polygraph": {
+        'misleading': NormalizedRatings.MIXTURE,
+        'true': NormalizedRatings.TRUE,
+        'false': NormalizedRatings.FALSE,       
+        'unsubstantiated': NormalizedRatings.FALSE
+        
+    },
+    "fatabyyano": {
+        'false': NormalizedRatings.FALSE,
+        'altered': NormalizedRatings.MIXTURE,      
+        'partially false': NormalizedRatings.MIXTURE,
+        'satire': NormalizedRatings.OTHER,
+        'missing context': NormalizedRatings.OTHER,
+        'true': NormalizedRatings.TRUE     
+        
+    },
+    "factograph": {
+        'не факт': NormalizedRatings.FALSE,
+        'это так': NormalizedRatings.TRUE,
+        'да, но': NormalizedRatings.MIXTURE,
+        'Тak, но,': NormalizedRatings.MIXTURE,
+        'пока не факт': NormalizedRatings.FALSE, # for now it should be false    
+        'скорее, так,': NormalizedRatings.MIXTURE,# true but not 100%
+        'не факт, но': NormalizedRatings.MIXTURE,# false but....
+        'видимо, так': NormalizedRatings.TRUE,#seems to be true
+        'не факт, увы,': NormalizedRatings.FALSE,
+        'пока, скорее, так': NormalizedRatings.MIXTURE, # for now it should be truth
+        'сомнительно': NormalizedRatings.MIXTURE, # we doubts its not true
+        'искажение': NormalizedRatings.OTHER,#interpreted wrongly
+        'скорее, так, но,': NormalizedRatings.MIXTURE,#seems to be true but..
+        'это так, но,': NormalizedRatings.MIXTURE,#true..but        
+        'правда': NormalizedRatings.TRUE,
+        'пока сомнительно': NormalizedRatings.MIXTURE,# for now we dont think its true
+        'скорее, правда': NormalizedRatings.MIXTURE,# seems to be true;NOT SURE
+        'неправда': NormalizedRatings.FALSE,              
+        'возможно, но,': NormalizedRatings.MIXTURE   # may be true but...
+        
+        
+    },
+    
+    "vishvanews": {
+        'false': NormalizedRatings.FALSE,
+        'misleading': NormalizedRatings.MIXTURE,      
+        'true': NormalizedRatings.TRUE,       
+        
     }
 }
 
@@ -123,7 +220,13 @@ def normalize(source_name, original_name) -> NormalizedRatings:
     """
     try:
         source = _normalization_dictionary[source_name]
+        print("source")
+        print(source)
+        print("original_name")
+        print(original_name)
         normalized_value = source[_standardize_name(original_name)]
+        print("normalized_value")
+        print(normalized_value)
     except KeyError:
         normalized_value = NormalizedRatings.OTHER
     return normalized_value
